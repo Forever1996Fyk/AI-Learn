@@ -65,7 +65,7 @@ get_weather_tool = {
         "properties":{
             "city":{
                 "type":"string",
-                "description":"城市名称，比如 London或 Beijing"
+                "description":"城市名称，比如 必须是英文格式，London或 Beijing"
             }
         },
         "required":["city"]
