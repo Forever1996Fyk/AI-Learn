@@ -8,7 +8,7 @@ spring:
   ai:
     dashscope:
       # 替换为自己的 api_key
-      api-key: sk-84e5ac84ae8f4221bd1ea578b711c21d
+      api-key: xxxxx
       chat:
         options:
           model: qwen3-max
