@@ -1,0 +1,7 @@
+spring:
+  ai:
+    mcp:
+      client:
+        stdio:
+          # mcp server服务配置
+          servers-configuration: classpath:/mcp-servers-config.json

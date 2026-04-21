@@ -74,7 +74,6 @@ public class WeatherService {
                     .build();
             HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
             String body = response.body();
-            System.out.println(body);
             JsonNode data = OBJECT_MAPPER.readTree(body);
             JsonNode main = data.get("main");
             JsonNode weatherArray = data.get("weather");

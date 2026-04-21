@@ -9,11 +9,12 @@ spring:
 server:
   port: 8086
 
-#logging:
-#  pattern:
-#    console:
-#  file:
-#    name: /Users/kaimichael/Desktop/develop/Idea Project/personal/AI-Learn/spring-ai/log/mcpserver/mcp-weather-stdio-server.log
+# 使用 STDIO 传输时，必须将日志输出到文件，避免干扰 JSON-RPC 通信
+logging:
+  file:
+    name: /Users/kaimichael/Desktop/develop/Idea Project/personal/AI-Learn/spring-ai/spring-ai-mcp/mcp-server/logs/mcp-server.log
+  pattern:
+    console: ""  # 禁用控制台输出
 
 # 访问 OpenWeather API的密钥
 tools:

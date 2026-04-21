@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "spring-ai-mcp-weather":{
+      "command":"/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home/bin/java",
+      "args":[
+        "-Dspring.ai.mcp.server.transport=STDIO",
+        "-jar",
+        "/Users/kaimichael/Desktop/develop/Idea Project/personal/AI-Learn/spring-ai/spring-ai-mcp/mcp-server/target/mcp-server-1.0.0-SNAPSHOT.jar"
+      ]
+    }
+  }
+}

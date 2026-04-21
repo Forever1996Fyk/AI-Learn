@@ -1,0 +1,7 @@
+spring:
+  ai:
+    mcp:
+      client:
+        sse:
+          connections:
+            weather-server: http://localhost:8086
