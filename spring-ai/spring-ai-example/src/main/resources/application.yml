@@ -1,0 +1,14 @@
+server:
+  port: 8070
+spring:
+  application:
+    name: SpringAIQuickStart
+  ai:
+    deepseek:
+      base-url: https://api.deepseek.com
+      api-key: sk-a942deb4e4ad40bba1899645c7790e3d
+      chat:
+        options:
+          model: deepseek-chat
+          # 介于 0-2 之间，0 表示随机性很小，2 表示随机性很大
+          temperature: 0.8
