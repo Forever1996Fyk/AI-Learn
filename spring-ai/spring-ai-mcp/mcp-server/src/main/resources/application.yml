@@ -7,7 +7,7 @@ spring:
     # 禁用 SpringBoot启动时的横幅(Banner)显示，对于使用 STDOIO 传输的 MCP 服务器，禁用 Banner 有助于避免输出干扰
     banner-mode: off
 server:
-  port: 8086
+  port: 8073
 
 # 使用 STDIO 传输时，必须将日志输出到文件，避免干扰 JSON-RPC 通信
 logging:
