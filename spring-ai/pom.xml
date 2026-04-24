@@ -15,5 +15,7 @@
         <module>spring-ai-mcp</module>
         <module>spring-ai-example</module>
         <module>spring-ai-chatclient</module>
+        <module>spring-ai-chatmemory</module>
+        <module>spring-ai-toolcalling</module>
     </modules>
 </project>

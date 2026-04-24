@@ -2,6 +2,7 @@ package com.forever1996Fyk.ai.springai.chatclient.controller;
 
 import com.forever1996Fyk.ai.springai.chatclient.pojo.IdCard;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ClassPathResource;
@@ -57,6 +58,9 @@ public class ImageAnalysisController {
                 })
                 .call()
                 .entity(IdCard.class);
+        MessageWindowChatMemory memory = MessageWindowChatMemory.builder()
+                .maxMessages(20)
+                .build();
         return idCard;
     }
 }
