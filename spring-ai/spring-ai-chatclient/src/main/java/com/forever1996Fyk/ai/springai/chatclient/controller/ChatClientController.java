@@ -5,12 +5,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
-import java.lang.reflect.Type;
 import java.util.List;
 
 /**
@@ -19,8 +16,8 @@ import java.util.List;
  * @author: YuKai Fan
  * @create: 2026/4/23 17:23
  **/
-@RestController
-@RequestMapping("/ai")
+//@RestController
+//@RequestMapping("/ai")
 public class ChatClientController {
 
     private final ChatClient chatClient;
