@@ -5,7 +5,7 @@
       "args":[
         "-Dspring.ai.mcp.server.transport=STDIO",
         "-jar",
-        "/Users/kaimichael/Desktop/develop/Idea Project/personal/AI-Learn/spring-ai/spring-ai-mcp/mcp-server/target/mcp-server-1.0.0-SNAPSHOT.jar"
+        "/Users/fanyukai/Desktop/develop/Idea Proejct/personal/AI-Learn/spring-ai/spring-ai-mcp/mcp-server/target/mcp-server-1.0.0-SNAPSHOT.jar"
       ]
     }
   }

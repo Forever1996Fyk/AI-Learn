@@ -4,4 +4,5 @@ spring:
       client:
         sse:
           connections:
-            weather-server: http://localhost:8086
+            weather-server:
+              url: http://localhost:8073

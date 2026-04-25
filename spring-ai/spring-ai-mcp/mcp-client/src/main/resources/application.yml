@@ -2,16 +2,30 @@ spring:
   application:
     name: McpClient
   profiles:
-    active: sse
-  main:
-    web-application-type: none
+    active: stdio
+#  main:
+#    web-application-type: none
   ai:
-    dashscope:
-      # 替换为自己的 api_key
-      api-key: xxxxx
+    deepseek:
+      base-url: https://api.deepseek.com
+      api-key: ${deepseek.api-key}
+      # 跳过 SSL 证书验证(仅开发环境使用)
+      ssl:
+        verify: false
       chat:
         options:
-          model: qwen3-max
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+          model: deepseek-chat
+          # 介于 0-2 之间,0 表示随机性很小,2 表示随机性很大
+          temperature: 0.8
+#    dashscope:
+#      # 替换为自己的 api_key
+#      api-key: xxxxx
+#      chat:
+#        options:
+#          model: qwen3-max
+#      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
 server:
   port: 8072
+logging:
+  level:
+    root: debug

@@ -6,13 +6,16 @@ spring:
   main:
     # 禁用 SpringBoot启动时的横幅(Banner)显示，对于使用 STDOIO 传输的 MCP 服务器，禁用 Banner 有助于避免输出干扰
     banner-mode: off
+    allow-bean-definition-overriding: true
+    allow-circular-references: true
 server:
   port: 8073
 
 # 使用 STDIO 传输时，必须将日志输出到文件，避免干扰 JSON-RPC 通信
 logging:
   file:
-    name: /Users/kaimichael/Desktop/develop/Idea Project/personal/AI-Learn/spring-ai/spring-ai-mcp/mcp-server/logs/mcp-server.log
+#    name: /Users/kaimichael/Desktop/develop/Idea Project/personal/AI-Learn/spring-ai/spring-ai-mcp/mcp-server/logs/mcp-server.log
+    name: /Users/fanyukai/Desktop/develop/Idea Proejct/personal/AI-Learn/spring-ai/spring-ai-mcp/mcp-server/logs/mcp-server.log
   pattern:
     console: ""  # 禁用控制台输出
 
