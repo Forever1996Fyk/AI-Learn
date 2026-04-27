@@ -17,6 +17,7 @@
     <modules>
         <module>ai-model</module>
         <module>spring-ai</module>
+        <module>milvus</module>
     </modules>
 
     <properties>
