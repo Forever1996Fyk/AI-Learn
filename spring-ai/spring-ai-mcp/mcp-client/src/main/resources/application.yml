@@ -2,7 +2,7 @@ spring:
   application:
     name: McpClient
   profiles:
-    active: stdio
+    active: sse
 #  main:
 #    web-application-type: none
   ai:
@@ -28,4 +28,4 @@ server:
   port: 8072
 logging:
   level:
-    root: debug
+    root: info
