@@ -17,5 +17,6 @@
         <module>spring-ai-chatclient</module>
         <module>spring-ai-chatmemory</module>
         <module>spring-ai-toolcalling</module>
+        <module>spring-ai-rag</module>
     </modules>
 </project>
