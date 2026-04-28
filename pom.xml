@@ -18,6 +18,7 @@
         <module>ai-model</module>
         <module>spring-ai</module>
         <module>milvus</module>
+        <module>spring-ai-alibaba</module>
     </modules>
 
     <properties>
