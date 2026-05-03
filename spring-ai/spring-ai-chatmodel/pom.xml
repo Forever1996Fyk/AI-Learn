@@ -5,16 +5,28 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.forever1996Fyk</groupId>
-        <artifactId>ai-learn</artifactId>
+        <artifactId>spring-ai</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>spring-ai-alibaba</artifactId>
+    <artifactId>spring-ai-chatmodel</artifactId>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+            <version>1.1.2.0</version>
+        </dependency>
+    </dependencies>
 
 </project>

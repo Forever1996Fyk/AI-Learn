@@ -1,0 +1,11 @@
+server:
+  port: 8075
+spring:
+  application:
+    name: SpringAIChatClient
+  ai:
+    chat:
+      client:
+        enabled: false
+    dashscope:
+      api-key: ${dashscope.api-key}
