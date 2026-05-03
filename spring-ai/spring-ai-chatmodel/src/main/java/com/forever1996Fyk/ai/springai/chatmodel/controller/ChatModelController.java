@@ -1,6 +1,7 @@
 package com.forever1996Fyk.ai.springai.chatmodel.controller;
 
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.ChatOptions;
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
 
 /**
  * @program: AI-Learn
@@ -25,6 +27,12 @@ public class ChatModelController {
     @GetMapping("/string")
     public String callString(String message) {
         return chatModel.call(message);
+    }
+
+    @GetMapping("/stream")
+    public Flux<String> callStream(String message, HttpServletResponse response) {
+        response.setCharacterEncoding("UTF-8");
+        return chatModel.stream(message);
     }
 
     @GetMapping("/prompt")
