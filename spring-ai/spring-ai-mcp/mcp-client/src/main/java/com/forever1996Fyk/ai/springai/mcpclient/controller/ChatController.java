@@ -2,10 +2,12 @@ package com.forever1996Fyk.ai.springai.mcpclient.controller;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
 
 /**
  * @program: AI-Learn
@@ -27,11 +29,11 @@ public class ChatController {
     }
 
 
-//    @GetMapping(value = "/chatStream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-//    public Flux<String> chatStream(@RequestParam String message) {
-//        return chatClient.prompt()
-//                .user(message)
-//                .stream()
-//                .content();
-//    }
+    @GetMapping(value = "/chatStream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<String> chatStream(@RequestParam String message) {
+        return chatClient.prompt()
+                .user(message)
+                .stream()
+                .content();
+    }
 }

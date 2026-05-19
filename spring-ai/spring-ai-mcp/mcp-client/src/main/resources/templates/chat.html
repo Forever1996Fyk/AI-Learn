@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSE 聊天</title>
+    <!-- 引入 marked.js 用于 Markdown 渲染 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .chat-container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .chat-header {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 15px;
+            background-color: #fafafa;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 18px;
+            max-width: 70%;
+            word-wrap: break-word;
+            line-height: 1.6;
+        }
+        .message p {
+            margin: 0.5em 0;
+        }
+        .message p:first-child {
+            margin-top: 0;
+        }
+        .message p:last-child {
+            margin-bottom: 0;
+        }
+        .message code {
+            background-color: rgba(0, 0, 0, 0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .message pre {
+            background-color: rgba(0, 0, 0, 0.1);
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 0.5em 0;
+        }
+        .message pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        .message ul, .message ol {
+            margin: 0.5em 0;
+            padding-left: 20px;
+        }
+        .message li {
+            margin: 0.3em 0;
+        }
+        .message blockquote {
+            border-left: 3px solid rgba(0, 0, 0, 0.2);
+            padding-left: 10px;
+            margin: 0.5em 0;
+            color: #666;
+        }
+        .message table {
+            border-collapse: collapse;
+            margin: 0.5em 0;
+            width: 100%;
+        }
+        .message th, .message td {
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            padding: 6px 10px;
+            text-align: left;
+        }
+        .message th {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+        .user-message {
+            background-color: #007bff;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        .user-message code,
+        .user-message pre {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        .user-message blockquote {
+            border-left-color: rgba(255, 255, 255, 0.5);
+            color: rgba(255, 255, 255, 0.9);
+        }
+        .user-message th,
+        .user-message td {
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        .user-message th {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .ai-message {
+            background-color: #e9ecef;
+            color: #333;
+            margin-right: auto;
+        }
+        .ai-message code,
+        .ai-message pre {
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        #messageInput {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        #sendButton {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        #sendButton:hover {
+            background-color: #0056b3;
+        }
+        #sendButton:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .typing {
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h2 class="chat-header">SSE 聊天对话</h2>
+        <div class="messages" id="messages"></div>
+        <div class="input-area">
+            <input type="text" id="messageInput" placeholder="输入消息..." />
+            <button id="sendButton">发送</button>
+        </div>
+    </div>
+
+    <script>
+        const messagesDiv = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+
+        // 发送消息
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            // 添加用户消息到界面
+            addMessage(message, 'user');
+            
+            // 清空输入框
+            messageInput.value = '';
+            
+            // 禁用发送按钮
+            sendButton.disabled = true;
+            sendButton.textContent = '发送中...';
+
+            // 创建AI消息占位符
+            const aiMessageDiv = addMessage('', 'ai');
+            aiMessageDiv.classList.add('typing');
+            aiMessageDiv.textContent = '正在输入...';
+
+            // 使用 EventSource 连接 SSE 端点
+            const eventSource = new EventSource(`/ai/chatStream?message=${encodeURIComponent(message)}`);
+
+            let content = '';
+
+            eventSource.onmessage = function(event) {
+                // 移除打字指示器
+                aiMessageDiv.classList.remove('typing');
+                
+                // 累积内容
+                content += event.data;
+                
+                // 使用 marked.js 渲染 Markdown 内容
+                try {
+                    aiMessageDiv.innerHTML = marked.parse(content);
+                } catch (error) {
+                    console.error('Markdown parse error:', error);
+                    aiMessageDiv.textContent = content;
+                }
+                
+                // 滚动到底部
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            };
+
+            eventSource.onerror = function(error) {
+                console.error('SSE Error:', error);
+                eventSource.close();
+                
+                // 移除打字指示器
+                aiMessageDiv.classList.remove('typing');
+                
+                if (!content) {
+                    aiMessageDiv.textContent = '连接错误，请重试';
+                } else {
+                    // 如果有部分内容，仍然尝试渲染
+                    try {
+                        aiMessageDiv.innerHTML = marked.parse(content);
+                    } catch (error) {
+                        aiMessageDiv.textContent = content;
+                    }
+                }
+                
+                // 重新启用发送按钮
+                sendButton.disabled = false;
+                sendButton.textContent = '发送';
+            };
+
+            // 当连接关闭时
+            eventSource.addEventListener('close', function() {
+                eventSource.close();
+                sendButton.disabled = false;
+                sendButton.textContent = '发送';
+            });
+        }
+
+        // 添加消息到界面
+        function addMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            messageDiv.textContent = text;
+            messagesDiv.appendChild(messageDiv);
+            
+            // 滚动到底部
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            return messageDiv;
+        }
+
+        // 绑定发送按钮事件
+        sendButton.addEventListener('click', sendMessage);
+
+        // 绑定回车键事件
+        messageInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // 页面加载完成后聚焦输入框
+        messageInput.focus();
+    </script>
+</body>
+</html>

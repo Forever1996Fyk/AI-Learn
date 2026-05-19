@@ -43,7 +43,7 @@ public class MilvusCollectionDemo {
         MilvusClientV2 client = new MilvusClientV2(connectConfig);
         // 创建 Collection
         String collectionName = "demo_collection";
-//        createCollection(client, collectionName);
+        createCollection(client, collectionName);
 
         // 列出 Collections
 //        listCollections(client);

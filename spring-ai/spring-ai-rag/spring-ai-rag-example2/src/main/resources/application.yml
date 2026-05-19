@@ -1,0 +1,43 @@
+server:
+  port: 8076
+spring:
+  application:
+    name: SpringAIChatClient
+  ai:
+    chat:
+      client:
+        enabled: false
+    deepseek:
+      base-url: https://api.deepseek.com
+      api-key: ${deepseek.api-key}
+      # 跳过 SSL 证书验证(仅开发环境使用)
+      ssl:
+        verify: false
+      chat:
+        options:
+          model: deepseek-chat
+          # 介于 0-2 之间,0 表示随机性很小,2 表示随机性很大
+          temperature: 0.8
+    zhipuai:
+      base-url: https://open.bigmodel.cn/api/paas
+      api-key: ${zhipuai.api-key}
+      embedding:
+        options:
+          model: embedding-2
+    vectorstore:
+      # milvus相关
+      milvus:
+        client:
+          host: localhost
+          port: 19530
+          token: root:Milvus
+        database-name: default
+        collection-name: guide_qa_store
+        # 如果不存在vector_store，则自动创建 collection
+        initialize-schema: true
+        # 向量维度
+        embedding-dimension: 1024
+
+logging:
+  pattern:
+    console: "%-5level %logger - %msg%n"

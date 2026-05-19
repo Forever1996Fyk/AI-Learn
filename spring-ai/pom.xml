@@ -18,5 +18,7 @@
         <module>spring-ai-chatmemory</module>
         <module>spring-ai-toolcalling</module>
         <module>spring-ai-prompt</module>
+        <module>spring-ai-rag</module>
+        <module>spring-ai-chatmodel</module>
     </modules>
 </project>
