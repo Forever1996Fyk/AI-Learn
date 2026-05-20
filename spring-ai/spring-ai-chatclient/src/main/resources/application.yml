@@ -24,3 +24,6 @@ spring:
       chat:
         options:
           model: GLM-4V-Flash
+logging:
+  level:
+    root: debug
