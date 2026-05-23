@@ -3,6 +3,14 @@ server:
 spring:
   application:
     name: LangChain4JDemo
+  data:
+    redis:
+      jedis:
+        pool:
+          enabled: true
+      host: 172.30.47.249
+      password: 1qaz2wsx3edc
+      port: 6379
 langchain4j:
   open-ai:
     chat-model:

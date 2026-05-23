@@ -1,6 +1,7 @@
 package com.forever1996Fyk.ai.springai.toolcalling;
 
 import com.forever1996Fyk.ai.springai.toolcalling.tools.MyTools;
+import com.forever1996Fyk.ai.springai.toolcalling.tools.TimeTools;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.deepseek.DeepSeekChatModel;
@@ -37,4 +38,19 @@ public class ToolsController {
                 .call()
                 .content();
     }
+
+    @GetMapping("/chat2")
+    public String chat2(String query) {
+        return chatClient.prompt().toolNames("getTimeFunction").user(query).call().content();
+    }
+
+    @GetMapping("/chat3")
+    public String chat3(@RequestParam String message) {
+        return chatClient.prompt()
+                .tools(new TimeTools())
+                .user(message)
+                .call()
+                .content();
+    }
+
 }
