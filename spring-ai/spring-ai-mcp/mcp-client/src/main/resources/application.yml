@@ -1,8 +1,8 @@
 spring:
   application:
     name: McpClient
-  profiles:
-    active: sse
+#  profiles:
+#    active: sse
 #  main:
 #    web-application-type: none
   ai:

@@ -1,0 +1,10 @@
+spring:
+  thymeleaf:
+    cache: false
+  ai:
+    mcp:
+      client:
+        streamable-http:
+          connections:
+            weather-server:
+              url: http://localhost:8082/stream/test

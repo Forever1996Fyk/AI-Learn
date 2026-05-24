@@ -1,4 +1,4 @@
-package com.forever1996Fyk.ai.springai.example.deepseek.controller;
+package com.forever1996Fyk.ai.springai.example.controller;
 
 import org.springframework.ai.deepseek.DeepSeekChatModel;
 import org.springframework.beans.factory.annotation.Autowired;

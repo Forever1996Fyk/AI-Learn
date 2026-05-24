@@ -1,0 +1,29 @@
+server:
+  port: 8082
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+      enabled: true
+    context-path: /stream/test
+
+spring:
+  application:
+    name: mcp-weather-streamable
+  ai:
+    mcp:
+      server:
+        name: weather-streamable-server
+        version: 1.0.0
+        enabled: true
+        type: sync
+        protocol: streamable  # 如果是无状态，那么就配置 STATELESS
+        instructions: "这个服务是用来查询城市天气的"
+        resource-change-notification: true
+        tool-change-notification: true
+        prompt-change-notification: true
+        annotation-scanner:
+          enabled: true
+        streamable-http:
+          mcp-endpoint: /api/mcp
+          keep-alive-interval: 30s

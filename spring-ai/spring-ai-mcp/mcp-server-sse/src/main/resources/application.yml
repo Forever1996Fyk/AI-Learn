@@ -1,0 +1,25 @@
+server:
+  port: 8081
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+      enabled: true
+
+spring:
+  application:
+    name: mcp-weather-sse
+  ai:
+    mcp:
+      server:
+        name: weather-sse-server
+        version: 1.0.0
+        enabled: true
+        type: sync
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+        sse-message-endpoint: /mcp/messages # 客户端向 MCP Server 发送指令
+        sse-endpoint: /sse                  # 客户端订阅服务器推送消息
