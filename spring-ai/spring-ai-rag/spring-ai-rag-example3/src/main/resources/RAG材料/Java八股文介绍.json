@@ -1,0 +1,67 @@
+{
+    "product_info": {
+      "title": "大厂面试题集锦",
+      "positioning": "吊打面试官！",
+      "activation_method": "微信扫码下单 -> 按照短信提示申请权限 -> 联系店铺客服审批",
+      "image_url": "https://cdn.nlark.com/yuque/0/2026/png/5378072/1768643505613-22e1e106-d5f8-4b5a-9cb8-3dea1c8bed81.png"
+    },
+    "content_statistics": {
+      "word_count": "120万+",
+      "question_count": "1200+",
+      "origin": "阿里大厂面试官从2023年3月起整理",
+      "authenticity": "内容原创，获国家版权局作品登记证书，非网络搬运"
+    },
+    "core_features": {
+      "update_frequency": "每周集中更新1-2次，包含更新Timeline",
+      "service_scope": [
+        "面试题长期更新",
+        "在线答疑",
+        "技术交流群",
+        "职场困惑咨询"
+      ],
+      "payment_model": "一次付费，永久更新",
+      "characteristics": ["新", "全", "准"]
+    },
+    "content_details": [
+      {
+        "target_audience": "应届生",
+        "topics": ["Java基础", "JVM", "并发编程", "计算机网络", "操作系统", "数据结构"]
+      },
+      {
+        "target_audience": "3-5年经验",
+        "topics": ["SSM", "Dubbo", "Redis", "Kafka", "ES", "分布式八股文"]
+      },
+      {
+        "target_audience": "5年以上经验",
+        "topics": ["微服务", "分布式事务/锁/原理", "架构设计", "三高架构"]
+      },
+      {
+        "target_audience": "通用必会",
+        "topics": ["MySQL", "线上问题排查", "场景题", "编程题", "智商题", "非技术问题"]
+      },
+      {
+        "target_audience": "拔高提升",
+        "topics": ["分库分表", "DDD", "设计模式", "云原生"]
+      }
+    ],
+    "format_and_style": {
+      "type": "在线文档",
+      "components": ["典型回答", "扩展知识"],
+      "usage_scenario": "适合快速背题对线，也适合体系化学习"
+    },
+    "value_proposition": {
+      "price_anchor": "一本书的价格 / 两杯咖啡的钱",
+      "content_volume": "近3000页（相当于8本纸质书）",
+      "advantages": [
+        "省去中间商，作者直接交流",
+        "持续更新与答疑（纸质书无法比拟）",
+        "节省找题和找答案的时间"
+      ]
+    },
+    "success_stories": [
+      "入职阿里案例",
+      "拿到30W+薪资",
+      "外包上岸成功",
+      "每日群内真实反馈"
+    ]
+  }

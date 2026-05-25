@@ -1,0 +1,9 @@
+server:
+  port: 8090
+spring:
+  application:
+    name: springai-rag-example3
+  ai:
+    deepseek:
+      base-url: https://api.deepseek.com
+      api-key: ${deepseek.api-key}
