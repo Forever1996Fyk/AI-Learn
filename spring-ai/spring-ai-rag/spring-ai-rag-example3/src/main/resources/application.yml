@@ -7,3 +7,27 @@ spring:
     deepseek:
       base-url: https://api.deepseek.com
       api-key: ${deepseek.api-key}
+    dashscope:
+      embedding:
+        options:
+          model: text-embedding-v4
+          dimensions: 768
+      api-key: ${dashscope.api-key}
+    vectorstore:
+      pgvector:
+        # 向量索引类型
+        index-type: HNSW
+        # 距离度量，余弦值
+        distance-type: COSINE_DISTANCE
+        # 向量维度
+        dimensions: 768
+        # 批量处理大小
+        max-document-batch-size: 9
+        # 启动时是否自动创建表
+        initialize-schema: true
+        # 创建的表名
+        table-name: vector_st
+  datasource:
+    url: jdbc:postgresql://localhost:5433/rag_test
+    username: pgvector
+    password: pgvector

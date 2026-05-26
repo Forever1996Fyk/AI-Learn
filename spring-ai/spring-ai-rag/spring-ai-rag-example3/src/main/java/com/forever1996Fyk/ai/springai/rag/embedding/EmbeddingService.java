@@ -1,0 +1,41 @@
+package com.forever1996Fyk.ai.springai.rag.embedding;
+
+import org.springframework.ai.document.Document;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+/**
+ * @program: AI-Learn
+ * @description:
+ * @author: YuKai Fan
+ * @create: 2026/5/26 23:07
+ **/
+@Service
+public class EmbeddingService {
+    @Autowired
+    private EmbeddingModel embeddingModel;
+
+    @Autowired
+    private VectorStore vectorStore;
+
+    /**
+     * 向量化
+     */
+    public List<float[]> embed(List<Document> documents) {
+        return documents.stream().map(document -> embeddingModel.embed(document.getText())).collect(Collectors.toList());
+    }
+    /**
+     * 存储向量库
+     */
+    public void embedAndStore(List<Document> documents) {
+        for (int i = 0; i < documents.size(); i += 9) {
+            List<Document> batches = documents.subList(i, Math.min(i + 9, documents.size()));
+            vectorStore.add(batches);
+        }
+    }
+}
