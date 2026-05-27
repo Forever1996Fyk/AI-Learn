@@ -3,6 +3,8 @@ package com.forever1996Fyk.ai.springai.rag.controller;
 import com.alibaba.cloud.ai.transformer.splitter.RecursiveCharacterTextSplitter;
 import com.forever1996Fyk.ai.springai.rag.embedding.EmbeddingService;
 import com.forever1996Fyk.ai.springai.rag.reader.factory.DocumentReaderStrategyFactory;
+import com.forever1996Fyk.ai.springai.rag.service.DocumentCleaner;
+import com.forever1996Fyk.ai.springai.rag.splitter.OverlapParagraphTextSplitter;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,13 +51,15 @@ public class RagEmbeddingController {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        List<Document> allChunkedDocuments = documents.stream()
+        // 数据清洗，避免存储无用符号
+        List<Document> cleanDocuments = DocumentCleaner.cleanDocuments(documents);
+        List<Document> allChunkedDocuments = cleanDocuments.stream()
                 .flatMap(document -> {
-                    RecursiveCharacterTextSplitter splitter = new RecursiveCharacterTextSplitter(300, new String[]{"\n\n", "\n"});
+                    // 这里使用递归分词
+                    OverlapParagraphTextSplitter splitter = new OverlapParagraphTextSplitter(100, 5);
                     return splitter.split(document).stream();
                 })
                 .collect(Collectors.toList());
-
         embeddingService.embedAndStore(allChunkedDocuments);
         return "success";
     }

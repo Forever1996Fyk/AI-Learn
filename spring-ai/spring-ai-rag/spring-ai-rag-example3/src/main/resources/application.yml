@@ -28,6 +28,6 @@ spring:
         # 创建的表名
         table-name: vector_st
   datasource:
-    url: jdbc:postgresql://localhost:5433/rag_test
-    username: pgvector
-    password: pgvector
+    url: jdbc:postgresql://172.30.47.249:1922/rag_test
+    username: onews_dev
+    password: NnRXkRdQeXU%?y2$mW!c?h=eQ!dKRx=R+WRs$PnT8nb8DJ|sSyf&XjayCUu3Vm*p

@@ -2,6 +2,7 @@ package com.forever1996Fyk.ai.springai.rag.embedding;
 
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ public class EmbeddingService {
     public List<float[]> embed(List<Document> documents) {
         return documents.stream().map(document -> embeddingModel.embed(document.getText())).collect(Collectors.toList());
     }
+
     /**
      * 存储向量库
      */
@@ -37,5 +39,19 @@ public class EmbeddingService {
             List<Document> batches = documents.subList(i, Math.min(i + 9, documents.size()));
             vectorStore.add(batches);
         }
+    }
+
+    private final static int DEFAULT_TOP_K = 5;
+    private final static float DEFAULT_SIMILARITY_THRESHOLD = 0.75f;
+    public List<Document> similaritySearch(String query) {
+        return vectorStore.similaritySearch(SearchRequest.builder()
+                .query(query)
+                .topK(DEFAULT_TOP_K)
+                .similarityThreshold(DEFAULT_SIMILARITY_THRESHOLD)
+                .build());
+    }
+
+    public List<Document> similaritySearch(SearchRequest searchRequest) {
+        return vectorStore.similaritySearch(searchRequest);
     }
 }
