@@ -28,6 +28,8 @@ spring:
         # 创建的表名
         table-name: vector_st
   datasource:
-    url: jdbc:postgresql://172.30.47.249:1922/rag_test
+    url: jdbc:postgresql://${pgvector_host}:1922/rag_test
     username: onews_dev
-    password: NnRXkRdQeXU%?y2$mW!c?h=eQ!dKRx=R+WRs$PnT8nb8DJ|sSyf&XjayCUu3Vm*p
+    password: ${pgvector_password}
+  elasticsearch:
+    uris: http://localhost:9200
