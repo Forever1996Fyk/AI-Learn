@@ -32,4 +32,9 @@ spring:
     username: onews_dev
     password: ${pgvector_password}
   elasticsearch:
-    uris: http://localhost:9200
+    uris: http://172.30.47.222:9200
+  neo4j:
+    uri: bolt://localhost:7687
+    authentication:
+      username: neo4j
+      password: neo4j666
