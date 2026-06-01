@@ -38,3 +38,10 @@ spring:
     authentication:
       username: neo4j
       password: neo4j666
+
+minio:
+  url: http://localhost:9000
+  accessKey: minioadmin
+  secretKey: minioadmin
+  bucketName: rag-test
+  endpoint: http://localhost:9000
