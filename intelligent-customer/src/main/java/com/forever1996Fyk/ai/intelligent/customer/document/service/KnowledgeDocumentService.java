@@ -1,0 +1,16 @@
+package com.forever1996Fyk.ai.intelligent.customer.document.service;
+
+import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.KnowledgeDocumentEntity;
+import com.baomidou.mybatisplus.extension.service.IService;
+
+/**
+ * <p>
+ * 知识文档表 服务类
+ * </p>
+ *
+ * @author MichaelKai
+ * @since 2026-06-02
+ */
+public interface KnowledgeDocumentService extends IService<KnowledgeDocumentEntity> {
+
+}

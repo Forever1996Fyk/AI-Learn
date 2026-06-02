@@ -1,0 +1,52 @@
+server:
+  port: 8009
+spring:
+  application:
+    name: intelligent-customer
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    url: jdbc:mysql://${mysql.url}:3306/intelligent_customer?rewriteBatchedStatements=true
+    username: ${mysql.username}
+    password: ${mysql.pwd}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # druid:
+    initial-size: 5
+    min-idle: 5
+    max-active: 20
+    max-wait: 60000
+    time-between-eviction-runs-millis: 60000
+    min-evictable-idle-time-millis: 300000
+    validation-query: SELECT 1
+    test-while-idle: true
+    test-on-borrow: false
+    test-on-return: false
+    pool-prepared-statements: true
+    max-pool-prepared-statement-per-connection-size: 20
+    filters: stat,wall
+    connection-properties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=5000
+    stat-view-servlet:
+      enabled: true
+      url-pattern: /druid/*
+      login-username: admin
+      login-password: admin
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${deepseek.api-key}
+      model-name: deepseek-chat
+      base-url: https://api.deepseek.com
+      log-requests: true
+      log-responses: true
+    streaming-chat-model:
+      api-key: ${deepseek.api-key}
+      model-name: deepseek-chat
+      base-url: https://api.deepseek.com
+      log-requests: true
+      log-responses: true
+
+minio:
+  url: http://localhost:9000
+  accessKey: minioadmin
+  secretKey: minioadmin
+  bucketName: rag-test
+  endpoint: http://localhost:9000

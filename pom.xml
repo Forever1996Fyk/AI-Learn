@@ -19,6 +19,7 @@
         <module>spring-ai</module>
         <module>milvus</module>
         <module>langchain4j</module>
+        <module>intelligent-customer</module>
     </modules>
 
     <properties>
