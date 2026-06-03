@@ -1,14 +1,20 @@
 package com.forever1996Fyk.ai.intelligent.customer.document.repository.bean;
 
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.forever1996Fyk.ai.intelligent.customer.document.enums.DocumentStatus;
+import com.forever1996Fyk.ai.intelligent.customer.document.enums.KnowledgeBaseType;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.io.Serializable;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * <p>
@@ -73,7 +79,7 @@ public class KnowledgeDocumentEntity {
     /**
      * 知识库类型：DOCUMENT_SEARCH, DATA_QUERY
      */
-    private String knowledgeBaseType;
+    private KnowledgeBaseType knowledgeBaseType;
 
     /**
      * 扩展字段，保存JSON字符串
@@ -99,4 +105,33 @@ public class KnowledgeDocumentEntity {
      * 是否删除：0-未删除，1-已删除
      */
     private Byte deleted;
+
+    @JsonIgnore
+    public Boolean isOverride() {
+        if (extension != null && !extension.isEmpty()) {
+            return (Boolean) JSON.parseObject(extension, Map.class).get("isOverride");
+        }
+        return false;
+    }
+
+    @JsonIgnore
+    public String getTableName() {
+        if (extension != null && !extension.isEmpty()) {
+            return (String) JSON.parseObject(extension, Map.class).get("tableName");
+        }
+        return null;
+    }
+
+
+    @JsonIgnore
+    public void setTableName(String tableName) {
+        Map<String, Serializable> extensionMap;
+        if (extension == null) {
+            extensionMap = new HashMap<String, Serializable>();
+        } else {
+            extensionMap = JSON.parseObject(extension, Map.class);
+        }
+        extensionMap.put("tableName", tableName);
+        this.extension = JSON.toJSONString(extensionMap);
+    }
 }
