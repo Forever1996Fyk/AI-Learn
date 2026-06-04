@@ -1,13 +1,17 @@
 package com.forever1996Fyk.ai.intelligent.customer.document.repository.bean;
 
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.forever1996Fyk.ai.intelligent.customer.document.enums.SegmentStatus;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
 import java.util.Date;
+import java.util.Map;
 
 /**
  * <p>
@@ -62,7 +66,7 @@ public class KnowledgeSegmentEntity {
     /**
      * 状态：STORED, VECTOR_STORED
      */
-    private String status;
+    private SegmentStatus status;
 
     /**
      * 是否跳过嵌入生成
@@ -87,5 +91,10 @@ public class KnowledgeSegmentEntity {
     /**
      * 是否删除：0-未删除，1-已删除
      */
-    private Byte deleted;
+    private Integer deleted;
+
+    @JsonIgnore
+    public Map<String, String> getMetadataMap() {
+        return metadata == null ? null : JSON.parseObject(metadata, Map.class);
+    }
 }

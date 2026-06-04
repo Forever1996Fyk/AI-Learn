@@ -271,7 +271,7 @@ public abstract class MinerUFileProcessBaseServiceImpl implements FileProcessSer
         }
 
         try (Stream<Path> paths = Files.walk(directory)) {
-            paths.sorted((a, b) -> a.compareTo(b)) // 反向排序，先删除子文件/目录
+            paths.sorted((a, b) -> b.compareTo(a)) // 反向排序，先删除子文件/目录
                     .forEach(path -> {
                         try {
                             Files.delete(path);
@@ -324,12 +324,12 @@ public abstract class MinerUFileProcessBaseServiceImpl implements FileProcessSer
         // 读取 md 的文件内容
         String mdContent = Files.readString(mdFile, StandardCharsets.UTF_8);
 
-        // 替换 md中图片地址为 MinIO 地址，并生成图片描述
-        String processedMdContent = processMarkdownImages(mdContent, imageUrlMap);
+//         替换 md中图片地址为 MinIO 地址，并生成图片描述
+//        String processedMdContent = processMarkdownImages(mdContent, imageUrlMap);
 
         // 上传处理后的 md 文件到 MinIO
         String mdObjectName = baseObjectName + mdFile.getFileName().toString();
-        String mdUrl = fileStorageService.uploadFile(mdObjectName, processedMdContent.getBytes(StandardCharsets.UTF_8), ContentType.TEXT_MARKDOWN);
+        String mdUrl = fileStorageService.uploadFile(mdObjectName, mdContent.getBytes(StandardCharsets.UTF_8), ContentType.TEXT_MARKDOWN);
         log.info("Markdown 文件已上传到 MinIO：{}", mdUrl);
         return mdUrl;
     }
@@ -390,7 +390,7 @@ public abstract class MinerUFileProcessBaseServiceImpl implements FileProcessSer
      *
      * @param imageUrl 图片的 MinIO URL
      */
-    private String generateImageDescription(String imageUrl) {
+    public String generateImageDescription(String imageUrl) {
         OpenAiChatModel chatModel = OpenAiChatModel.builder()
                 .apiKey(chatModelApiKey)
                 .baseUrl(chatModelBaseUrl)

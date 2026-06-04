@@ -32,15 +32,9 @@ spring:
 langchain4j:
   open-ai:
     chat-model:
-      api-key: ${deepseek.api-key}
-      model-name: deepseek-chat
-      base-url: https://api.deepseek.com
-      log-requests: true
-      log-responses: true
-    streaming-chat-model:
-      api-key: ${deepseek.api-key}
-      model-name: deepseek-chat
-      base-url: https://api.deepseek.com
+      api-key: ${dashscope.api-key}
+      model-name: deepseek-v4-pro
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
       log-requests: true
       log-responses: true
 
@@ -48,5 +42,12 @@ minio:
   url: http://localhost:9000
   accessKey: minioadmin
   secretKey: minioadmin
-  bucketName: rag-test
+  bucketName: intelligent-customer
   endpoint: http://localhost:9000
+
+elasticsearch:
+  host: http://localhost:9200
+  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model-name: text-embedding-v4
+  api-key: ${dashscope.api-key}
+  dimensions: 1536

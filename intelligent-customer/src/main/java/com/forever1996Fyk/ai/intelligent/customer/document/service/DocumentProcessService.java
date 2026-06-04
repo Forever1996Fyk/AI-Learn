@@ -1,5 +1,6 @@
 package com.forever1996Fyk.ai.intelligent.customer.document.service;
 
+import com.forever1996Fyk.ai.intelligent.customer.document.entity.DocumentSplitParam;
 import com.forever1996Fyk.ai.intelligent.customer.document.entity.DocumentUploadParam;
 import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.KnowledgeDocumentEntity;
 
@@ -21,4 +22,21 @@ public interface DocumentProcessService {
      * @throws IOException IO异常
      */
     KnowledgeDocumentEntity upload(DocumentUploadParam documentUploadParam) throws IOException;
+
+    /**
+     * 分割文档
+     *
+     * @param document        知识文档实体
+     * @param documentSplitParam 文档分割参数
+     * @return 分割结果
+     */
+    int split(KnowledgeDocumentEntity document, DocumentSplitParam documentSplitParam);
+
+    /**
+     * 嵌入文档并存储
+     *
+     * @param document 知识文档实体
+     * @return 嵌入结果
+     */
+    boolean embedAndStore(KnowledgeDocumentEntity document);
 }
