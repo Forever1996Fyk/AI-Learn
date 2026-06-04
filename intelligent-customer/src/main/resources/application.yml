@@ -5,7 +5,7 @@ spring:
     name: intelligent-customer
   datasource:
     type: com.alibaba.druid.pool.DruidDataSource
-    url: jdbc:mysql://${mysql.url}:3306/intelligent_customer?rewriteBatchedStatements=true
+    url: jdbc:mysql://${mysql.url}:3306/intelligent_customer?useUnicode=true&characterEncoding=UTF-8&rewriteBatchedStatements=true
     username: ${mysql.username}
     password: ${mysql.pwd}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -29,6 +29,41 @@ spring:
       url-pattern: /druid/*
       login-username: admin
       login-password: admin
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: xxxx
+      ssl:
+        enabled: true
+  redis:
+    redisson:
+      config: |
+        singleServerConfig:
+          idleConnectionTimeout: 10000
+          connectTimeout: 10000
+          timeout: 3000
+          retryAttempts: 3
+          retryInterval: 1500
+          password: xxxx
+          subscriptionsPerConnection: 5
+          clientName: null
+          address: "redis://localhost:6379"
+          subscriptionConnectionMinimumIdleSize: 1
+          subscriptionConnectionPoolSize: 50
+          connectionMinimumIdleSize: 24
+          connectionPoolSize: 64
+          database: 0
+          dnsMonitoringInterval: 5000
+        threads: 16
+        nettyThreads: 32
+        codec: !<org.redisson.codec.JsonJacksonCodec> {}
+        transportMode: "NIO"
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
 langchain4j:
   open-ai:
     chat-model:
@@ -51,3 +86,13 @@ elasticsearch:
   model-name: text-embedding-v4
   api-key: ${dashscope.api-key}
   dimensions: 1536
+
+file:
+  parse:
+    api:
+      url: http://localhost:8000 # 文档解析接口地址
+
+xxl:
+  job:
+    admin:
+      addresses: http://localhost:8080/xxl-job-admin

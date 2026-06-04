@@ -20,6 +20,7 @@ import com.forever1996Fyk.ai.intelligent.customer.document.service.FileStorageSe
 import com.forever1996Fyk.ai.intelligent.customer.document.service.KnowledgeDocumentService;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.KnowledgeSegmentService;
 import com.forever1996Fyk.ai.intelligent.customer.document.util.FileTypeUtils;
+import com.forever1996Fyk.ai.intelligent.customer.infra.lock.DistributeLock;
 import com.forever1996Fyk.ai.intelligent.customer.rag.constant.MetadataKeyConstant;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.spltter.DocumentSplitterFactory;
 import com.google.common.base.Stopwatch;
@@ -37,6 +38,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
@@ -76,7 +78,14 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     @Value("${minio.bucketName}")
     private String bucketName;
 
+    /**
+     * 上传文件
+     * 这里需要考虑单个用户并发上传文件，所以需要加锁，key: 表示当前上传的用户，这样一个用户同一时间只能上传一次
+     * @param documentUploadParam DocumentUploadParam
+     * @return KnowledgeDocumentEntity
+     */
     @Override
+    @DistributeLock(scene = "document-upload", keyExpression = "#documentUploadParam.uploadUser", waitTime = 0)
     public KnowledgeDocumentEntity upload(DocumentUploadParam documentUploadParam) throws IOException {
         log.info("start to upload");
         String fileName = documentUploadParam.file().getOriginalFilename();
@@ -120,6 +129,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    @DistributeLock(scene = "document-split", keyExpression = "#document.docId", waitTime = 0)
     public int split(KnowledgeDocumentEntity document, DocumentSplitParam documentSplitParam) {
         // 1. 查询文档
         Assert.notNull(document, "文档不存在");
@@ -205,6 +216,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
     }
 
     @Override
+    @DistributeLock(scene = "document-split", keyExpression = "#document.docId", waitTime = 0)
     public boolean embedAndStore(KnowledgeDocumentEntity document) {
         if (document == null) {
             return false;
