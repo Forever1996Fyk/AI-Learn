@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.forever1996Fyk.ai.intelligent.customer.document.entity.DocumentSplitParam;
 import com.forever1996Fyk.ai.intelligent.customer.document.entity.DocumentUploadParam;
 import com.forever1996Fyk.ai.intelligent.customer.document.enums.DocumentStatus;
+import com.forever1996Fyk.ai.intelligent.customer.document.enums.FileType;
 import com.forever1996Fyk.ai.intelligent.customer.document.enums.KnowledgeBaseType;
 import com.forever1996Fyk.ai.intelligent.customer.document.enums.SegmentStatus;
 import com.forever1996Fyk.ai.intelligent.customer.document.event.DocumentChunkedEvent;
@@ -23,6 +24,7 @@ import com.forever1996Fyk.ai.intelligent.customer.document.util.FileTypeUtils;
 import com.forever1996Fyk.ai.intelligent.customer.infra.lock.DistributeLock;
 import com.forever1996Fyk.ai.intelligent.customer.rag.constant.MetadataKeyConstant;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.spltter.DocumentSplitterFactory;
+import com.forever1996Fyk.ai.intelligent.customer.rag.modules.spltter.ExcelSplitter;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import dev.langchain4j.data.document.Document;
@@ -158,9 +160,17 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
         List<KnowledgeSegmentEntity> knowledgeSegments = Lists.newArrayList();
         List<TextSegment> segments = Lists.newArrayList();
         try (InputStream inputStream = fileStorageService.downloadFile(objectName)){
-            DocumentSplitter splitter = DocumentSplitterFactory.getInstance(documentSplitParam);
-            Document doc = Document.from(new String(inputStream.readAllBytes(), StandardCharsets.UTF_8));
-            segments = splitter.split(doc);
+            //EXCEL单独处理，因为他不是Document类型
+            if (FileType.EXCEL == FileTypeUtils.getFileType(document.getConvertedDocUrl())
+                    || FileType.CSV == FileTypeUtils.getFileType(document.getConvertedDocUrl())
+            ) {
+                ExcelSplitter excelSplitter = new ExcelSplitter(documentSplitParam.chunkSize(), false);
+                segments = excelSplitter.split(inputStream.readAllBytes());
+            } else {
+                DocumentSplitter splitter = DocumentSplitterFactory.getInstance(documentSplitParam);
+                Document doc = Document.from(new String(inputStream.readAllBytes(), StandardCharsets.UTF_8));
+                segments = splitter.split(doc);
+            }
         } catch (Exception e) {
             throw new RuntimeException("下载文档失败：" + e.getMessage(), e);
         }

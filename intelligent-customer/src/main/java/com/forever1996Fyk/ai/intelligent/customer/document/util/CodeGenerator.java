@@ -45,7 +45,7 @@ public class CodeGenerator {
                     builder
                             .enableCapitalMode()
                             .enableSkipView()
-                            .addInclude("knowledge_document","knowledge_segment") // 设置需要生成的表名
+                            .addInclude("table_meta") // 设置需要生成的表名
                             .controllerBuilder().disable()
                             .mapperBuilder().disableMapperXml()
                             .entityBuilder()

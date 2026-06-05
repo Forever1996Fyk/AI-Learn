@@ -36,7 +36,7 @@ public class DocumentCompensationJob {
      */
     private static final int MAX_RETRY_COUNT = 5;
 
-    @XxlJob("documentEmbeddingCompensation")
+//    @XxlJob("documentEmbeddingCompensation")
     public void documentEmbeddingCompensation() {
         log.info("开始执行向量化补偿任务");
         int successCount = 0;

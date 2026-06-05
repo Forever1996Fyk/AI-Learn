@@ -31,9 +31,9 @@ spring:
       login-password: admin
   data:
     redis:
-      host: localhost
+      host: 172.30.47.249
       port: 6379
-      password: xxxx
+      password: 1qaz2wsx3edc
       ssl:
         enabled: true
   redis:
@@ -45,10 +45,10 @@ spring:
           timeout: 3000
           retryAttempts: 3
           retryInterval: 1500
-          password: xxxx
+          password: 1qaz2wsx3edc
           subscriptionsPerConnection: 5
           clientName: null
-          address: "redis://localhost:6379"
+          address: "redis://172.30.47.249:6379"
           subscriptionConnectionMinimumIdleSize: 1
           subscriptionConnectionPoolSize: 50
           connectionMinimumIdleSize: 24
@@ -92,7 +92,11 @@ file:
     api:
       url: http://localhost:8000 # 文档解析接口地址
 
-xxl:
-  job:
-    admin:
-      addresses: http://localhost:8080/xxl-job-admin
+## XXL-Job 配置
+#xxl:
+#  job:
+#    admin:
+#      addresses: http://127.0.0.1:8080/xxl-job-admin # xxl-job-admin 地址，记得改成你自己的
+#    accessToken: default_token
+#    executor:
+#      appname: intelligent-customer-executor # 执行器名称
