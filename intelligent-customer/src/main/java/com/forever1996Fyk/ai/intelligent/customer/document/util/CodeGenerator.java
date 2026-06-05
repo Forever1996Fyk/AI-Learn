@@ -35,7 +35,7 @@ public class CodeGenerator {
                 })
                 .packageConfig(builder -> {
                     builder // 设置父包名
-                            .parent("com.forever1996Fyk.ai.intelligent.customer")
+                            .parent("com.forever1996Fyk.ai.intelligent.customer.chat")
                             .entity("repository.bean") // 设置实体类包名
                             .mapper("repository.mapper") // 设置 Mapper 接口包名
                             .service("service") // 设置 Service 接口包名
@@ -45,7 +45,7 @@ public class CodeGenerator {
                     builder
                             .enableCapitalMode()
                             .enableSkipView()
-                            .addInclude("table_meta") // 设置需要生成的表名
+                            .addInclude("chat_conversation", "chat_message") // 设置需要生成的表名
                             .controllerBuilder().disable()
                             .mapperBuilder().disableMapperXml()
                             .entityBuilder()

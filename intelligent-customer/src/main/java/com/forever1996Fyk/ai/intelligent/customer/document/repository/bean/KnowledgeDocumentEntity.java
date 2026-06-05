@@ -1,9 +1,13 @@
 package com.forever1996Fyk.ai.intelligent.customer.document.repository.bean;
 
 import com.alibaba.fastjson2.JSON;
+import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.Version;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.forever1996Fyk.ai.intelligent.customer.document.enums.DocumentStatus;
 import com.forever1996Fyk.ai.intelligent.customer.document.enums.KnowledgeBaseType;
@@ -12,6 +16,7 @@ import lombok.Setter;
 import lombok.ToString;
 
 import java.io.Serializable;
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -86,25 +91,30 @@ public class KnowledgeDocumentEntity {
      */
     private String extension;
 
+
     /**
      * 创建时间
      */
-    private Date createdAt;
+    @TableField(fill = FieldFill.INSERT)
+    private LocalDateTime createdAt;
 
     /**
      * 修改时间
      */
-    private Date updatedAt;
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updatedAt;
 
     /**
      * 乐观锁版本号
      */
+    @Version
     private Integer lockVersion;
 
     /**
      * 是否删除：0-未删除，1-已删除
      */
-    private Byte deleted;
+    @TableLogic
+    private Integer deleted;
 
     @JsonIgnore
     public Boolean isOverride() {
