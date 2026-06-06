@@ -64,4 +64,12 @@ public interface ChatMessageService extends IService<ChatMessageEntity> {
      * @return 消息ID
      */
     String saveAssistantMessage(String finalConversationId);
+
+    /**
+     * 更新转换后的内容
+     *
+     * @param chatMessageId 聊天消息ID
+     * @param newQuery      新的查询内容
+     */
+    void updateTransformContent(String chatMessageId, String newQuery);
 }

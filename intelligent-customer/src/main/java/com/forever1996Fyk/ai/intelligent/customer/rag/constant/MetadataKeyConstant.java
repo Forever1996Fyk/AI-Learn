@@ -23,6 +23,11 @@ public class MetadataKeyConstant {
     public static final String PARENT_CHUNK_ID = "parentChunkId";
 
     /**
+     * 同级块ID
+     */
+    public static final String BROTHER_CHUNK_ID = "brotherChunkId";
+
+    /**
      * 头级别
      */
     public static final String HEADER_LEVEL = "headerLevel";

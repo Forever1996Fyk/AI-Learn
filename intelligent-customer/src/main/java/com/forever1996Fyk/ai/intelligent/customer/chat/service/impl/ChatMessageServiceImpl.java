@@ -1,12 +1,14 @@
 package com.forever1996Fyk.ai.intelligent.customer.chat.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.forever1996Fyk.ai.intelligent.customer.chat.enums.ChatMessageType;
 import com.forever1996Fyk.ai.intelligent.customer.chat.repository.bean.ChatMessageEntity;
 import com.forever1996Fyk.ai.intelligent.customer.chat.repository.mapper.ChatMessageMapper;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatMessageService;
+import dev.langchain4j.data.message.ChatMessage;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -91,5 +93,13 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
 
         this.save(message);
         return messageId;
+    }
+
+    @Override
+    public void updateTransformContent(String chatMessageId, String newQuery) {
+        ChatMessageEntity chatMessageEntity = new ChatMessageEntity();
+        chatMessageEntity.setTransformContent(newQuery);
+        this.update(chatMessageEntity, new LambdaQueryWrapper<ChatMessageEntity>()
+                .eq(ChatMessageEntity::getMessageId, chatMessageId));
     }
 }

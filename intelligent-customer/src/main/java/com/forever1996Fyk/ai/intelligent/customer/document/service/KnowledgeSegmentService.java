@@ -13,4 +13,11 @@ import com.baomidou.mybatisplus.extension.service.IService;
  */
 public interface KnowledgeSegmentService extends IService<KnowledgeSegmentEntity> {
 
+    /**
+     * 根据chunkId获取文本
+     *
+     * @param parentChunkId chunkId
+     * @return 文本
+     */
+    String getTextByChunkId(String parentChunkId);
 }
