@@ -1,5 +1,8 @@
 package com.forever1996Fyk.ai.intelligent.customer.chat.controller;
 
+import com.forever1996Fyk.ai.intelligent.customer.ai.model.IntentRecognitionResult;
+import com.forever1996Fyk.ai.intelligent.customer.ai.service.CommonChatService;
+import com.forever1996Fyk.ai.intelligent.customer.ai.service.IntentRecognitionService;
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.TitleSummaryService;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatConversationService;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatMessageService;
@@ -8,7 +11,9 @@ import dev.langchain4j.service.AiServices;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,9 +33,13 @@ import java.util.Map;
 @RequestMapping("/chat")
 public class ChatController {
     @Autowired
+    private CommonChatService commonChatService;
+    @Autowired
     private ChatMessageService chatMessageService;
     @Autowired
     private ChatConversationService chatConversationService;
+    @Autowired
+    private IntentRecognitionService intentRecognitionService;
 
     @Value("${langchain4j.open-ai.chat-model.api-key}")
     private String chatModelApiKey;
@@ -49,6 +58,7 @@ public class ChatController {
      * @param content        用户问题
      * @param conversationId 会话ID（可选，不传则自动创建新会话）
      */
+    @PostMapping(value = "/send", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> send(
             @RequestParam String userId,
             @RequestParam String content,
@@ -98,6 +108,13 @@ public class ChatController {
         // 2. 保存用户信息
         String messageId = chatMessageService.saveUserMessage(finalConversationId, content);
         String assistantMessageId = chatMessageService.saveAssistantMessage(finalConversationId);
-        return Flux.just("怎么说");
+
+        IntentRecognitionResult intentRecognitionResult = intentRecognitionService.chat(content);
+        // 如果意图识别关联性为 false，即表示与业务没有关联，就调用通用LLM 做对话
+        if (!intentRecognitionResult.related()) {
+            return commonChatService.streamChat(content)
+                    .concatWith( Flux.just("[DONE]:" + finalConversationId));
+        }
+        return Flux.just("[DONE]:" + finalConversationId);
     }
 }

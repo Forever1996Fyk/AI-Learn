@@ -11,7 +11,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * @create: 2026/6/2 22:19
  **/
 @SpringBootApplication
-@MapperScan(basePackages = "com.forever1996Fyk.ai.intelligent.customer.document.repository.mapper")
+@MapperScan(basePackages = "com.forever1996Fyk.ai.intelligent.customer.**.repository.mapper")
 public class IntelligentCustomerApplication {
 
     public static void main(String[] args) {
