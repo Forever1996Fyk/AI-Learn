@@ -4,15 +4,22 @@ import com.forever1996Fyk.ai.intelligent.customer.ai.model.IntentRecognitionResu
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.CommonChatService;
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.IntentRecognitionService;
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.TitleSummaryService;
+import com.forever1996Fyk.ai.intelligent.customer.chat.repository.bean.ChatConversationEntity;
+import com.forever1996Fyk.ai.intelligent.customer.chat.repository.bean.ChatMessageEntity;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatConversationService;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatMessageService;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.service.AiServices;
 import lombok.extern.slf4j.Slf4j;
+import org.checkerframework.checker.units.qual.C;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -20,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -116,5 +124,36 @@ public class ChatController {
                     .concatWith( Flux.just("[DONE]:" + finalConversationId));
         }
         return Flux.just("[DONE]:" + finalConversationId);
+    }
+
+    /**
+     * 查询指定用户的对话列表，按更新时间倒序排序
+     *
+     * @param userId 用户ID
+     */
+    @GetMapping("/list")
+    public List<ChatConversationEntity> listConversations(@RequestParam String userId) {
+        return chatConversationService.getConversationsByUserId(userId);
+    }
+
+    /**
+     * 查询指定对话的消息列表，按创建时间正序排序
+     *
+     * @param conversationId 会话ID
+     */
+    @GetMapping("/messages")
+    public List<ChatMessageEntity> listMessages(@RequestParam String conversationId) {
+        return chatMessageService.getMessagesByConversationId(conversationId);
+    }
+
+    /**
+     * 删除对话（同时删除该对话下所有消息）
+     *
+     * @param conversationId 会话ID
+     */
+    @DeleteMapping("/{conversationId}")
+    public boolean deleteConversation(@PathVariable String conversationId) {
+        chatMessageService.deleteMessagesByConversationId(conversationId);
+        return chatConversationService.deleteConversation(conversationId);
     }
 }
