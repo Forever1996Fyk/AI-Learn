@@ -69,6 +69,11 @@ public class IntelligentCustomerQueryTransformer implements QueryTransformer {
     private final String chatMessageId;
 
     /**
+     * 进度回调，用于流式返回前端进度信息
+     */
+    private final Consumer<String> progressCallback;
+
+    /**
      * Spring 容器，由使用方在构造时传入
      */
     private static volatile ApplicationContext applicationContext;
@@ -130,11 +135,16 @@ public class IntelligentCustomerQueryTransformer implements QueryTransformer {
         this.promptTemplate = ensureNotNull(promptTemplate, "promptTemplate");
         this.chatModel = ensureNotNull(chatModel, "chatModel");
         this.chatMessageId = chatMessageId;
+        this.progressCallback = progressCallback;
     }
 
 
     @Override
     public Collection<Query> transform(Query query) {
+        // 发送进度：开始问题改写
+        if (progressCallback != null) {
+            progressCallback.accept("[PROGRESS]:正在优化您的问题...");
+        }
         log.info("开始问题改写，原始问题：{}", query.text());
         List<ChatMessage> chatMemory = query.metadata().chatMemory();
         Stopwatch stopwatch = Stopwatch.createStarted();

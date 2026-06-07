@@ -1,15 +1,21 @@
 package com.forever1996Fyk.ai.intelligent.customer.rag.controller;
 
+import com.alibaba.fastjson2.JSON;
+import com.forever1996Fyk.ai.intelligent.customer.ai.model.IntentRecognitionResult;
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.CommonChatService;
+import com.forever1996Fyk.ai.intelligent.customer.ai.service.IntentRecognitionService;
+import com.forever1996Fyk.ai.intelligent.customer.ai.service.prompt.PromptService;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.KnowledgeSegmentService;
 import com.forever1996Fyk.ai.intelligent.customer.rag.config.ElasticSearchConfiguration;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.reranker.BgeScoringModel;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.retriever.IntelligentCustomerElasticsearchContentRetriever;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.router.IntelligentCustomerQueryRouter;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.transformer.IntelligentCustomerQueryTransformer;
+import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.input.PromptTemplate;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.model.scoring.onnx.OnnxScoringModel;
 import dev.langchain4j.rag.DefaultRetrievalAugmentor;
@@ -17,6 +23,8 @@ import dev.langchain4j.rag.content.Content;
 import dev.langchain4j.rag.content.ContentMetadata;
 import dev.langchain4j.rag.content.aggregator.ContentAggregator;
 import dev.langchain4j.rag.content.aggregator.ReRankingContentAggregator;
+import dev.langchain4j.rag.content.injector.ContentInjector;
+import dev.langchain4j.rag.content.injector.DefaultContentInjector;
 import dev.langchain4j.rag.content.retriever.elasticsearch.ElasticsearchContentRetriever;
 import dev.langchain4j.rag.query.Query;
 import dev.langchain4j.rag.query.router.DefaultQueryRouter;
@@ -59,12 +67,44 @@ public class RagModuleController {
     @Autowired
     private RestClient restClient;
 
+    @Autowired
+    private PromptService promptService;
+
     private static final int MAX_RESULT = 5;
 
     private static final double MIN_SCORE = 0.5;
 
     @Autowired
     private KnowledgeSegmentService knowledgeSegmentService;
+
+    @GetMapping("/testPromptRouter")
+    public String testPromptRouter(String query) {
+        IntentRecognitionResult intentRecognitionResult = AiServices.builder(IntentRecognitionService.class)
+                .chatModel(chatModel)
+                .build()
+                .chat(query);
+        return promptService.getPrompt(intentRecognitionResult);
+    }
+
+    @GetMapping("testPromptRouter1")
+    public String testPromptRouter1(String query) {
+
+
+        IntentRecognitionResult intentRecognitionResult = AiServices.builder(IntentRecognitionService.class).chatModel(chatModel).build().chat(query);
+        String prompt = promptService.getPrompt(intentRecognitionResult);
+        ContentInjector contentInjector = new DefaultContentInjector(PromptTemplate.from(prompt));
+
+        List<Content> testContents = List.of(
+                Content.from(TextSegment.from("Java是一种面向对象的编程语言，具有跨平台、安全性高等特点，广泛应用于企业级开发。")),
+                Content.from(TextSegment.from("Python是一种解释型的高级编程语言，以简洁易读的语法著称，常用于数据科学和人工智能领域。")),
+                Content.from(TextSegment.from("JavaScript是一种脚本语言，主要用于Web前端开发，也可以通过Node.js进行服务端编程。")),
+                Content.from(TextSegment.from("Java虚拟机（JVM）是运行Java字节码的虚拟机，它使得Java具有跨平台能力。Spring是最流行的Java开发框架。")),
+                Content.from(TextSegment.from("Go语言由Google开发，以高并发和简洁语法为特色，常用于微服务和云原生开发。"))
+        );
+        System.out.println(JSON.toJSONString(contentInjector.inject(testContents, new UserMessage(query))));
+        return ((UserMessage) contentInjector.inject(testContents, new UserMessage(query))).singleText();
+    }
+
 
     @GetMapping("testRetriever")
     public Flux<String> testRetriever(String query, String chatMessageId, HttpServletResponse response) {

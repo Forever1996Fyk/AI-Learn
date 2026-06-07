@@ -17,6 +17,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import static dev.langchain4j.internal.Utils.getOrDefault;
@@ -32,6 +33,15 @@ public class IntelligentCustomerQueryRouter implements QueryRouter {
 
     private final ChatModel chatModel;
     private final PromptTemplate promptTemplate;
+
+    /**
+     * 进度回调，用于流式返回前端进度信息
+     */
+    private final Consumer<String> progressCallback;
+    /**
+     * 确保路由进度只发送一次（DefaultRetrievalAugmentor 可能对多个 query 多次调用 route）
+     */
+    private final AtomicBoolean routeProgressSent = new AtomicBoolean(false);
 
     private final Collection<ContentRetriever> contentRetrievers;
 
@@ -85,10 +95,16 @@ public class IntelligentCustomerQueryRouter implements QueryRouter {
         this.promptTemplate = getOrDefault(promptTemplate, QUERY_ROUTE_PROMPT);
         this.contentRetrievers = contentRetrievers;
         this.chatModel = chatModel;
+        this.progressCallback = progressCallback;
     }
 
     @Override
     public Collection<ContentRetriever> route(Query query) {
+        // 发送进度：开始问题路由（仅发送一次，避免多个 query 导致重复）
+        if (progressCallback != null && routeProgressSent.compareAndSet(false, true)) {
+            progressCallback.accept("[PROGRESS]:正在路由您的问题...");
+            System.out.println("[PROGRESS]:正在路由您的问题...");
+        }
         String response = chatModel.chat(createPrompt(query).text());
         QueryRouteResult queryRouteResult = JSON.parseObject(response, QueryRouteResult.class);
         String strategy = queryRouteResult.strategy();

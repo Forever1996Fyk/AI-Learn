@@ -1,11 +1,13 @@
 package com.forever1996Fyk.ai.intelligent.customer.chat.controller;
 
+import com.forever1996Fyk.ai.intelligent.customer.ai.model.ChatParam;
 import com.forever1996Fyk.ai.intelligent.customer.ai.model.IntentRecognitionResult;
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.CommonChatService;
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.IntentRecognitionService;
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.TitleSummaryService;
 import com.forever1996Fyk.ai.intelligent.customer.chat.repository.bean.ChatConversationEntity;
 import com.forever1996Fyk.ai.intelligent.customer.chat.repository.bean.ChatMessageEntity;
+import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatApplicationService;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatConversationService;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatMessageService;
 import dev.langchain4j.data.message.ChatMessage;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.Map;
@@ -48,6 +51,8 @@ public class ChatController {
     private ChatConversationService chatConversationService;
     @Autowired
     private IntentRecognitionService intentRecognitionService;
+    @Autowired
+    private ChatApplicationService chatApplicationService;
 
     @Value("${langchain4j.open-ai.chat-model.api-key}")
     private String chatModelApiKey;
@@ -117,13 +122,36 @@ public class ChatController {
         String messageId = chatMessageService.saveUserMessage(finalConversationId, content);
         String assistantMessageId = chatMessageService.saveAssistantMessage(finalConversationId);
 
-        IntentRecognitionResult intentRecognitionResult = intentRecognitionService.chat(content);
-        // 如果意图识别关联性为 false，即表示与业务没有关联，就调用通用LLM 做对话
-        if (!intentRecognitionResult.related()) {
-            return commonChatService.streamChat(content)
-                    .concatWith( Flux.just("[DONE]:" + finalConversationId));
-        }
-        return Flux.just("[DONE]:" + finalConversationId);
+//        IntentRecognitionResult intentRecognitionResult = intentRecognitionService.chat(content);
+//        // 如果意图识别关联性为 false，即表示与业务没有关联，就调用通用LLM 做对话
+//        if (!intentRecognitionResult.related()) {
+//            return commonChatService.streamChat(content)
+//                    .concatWith( Flux.just("[DONE]:" + finalConversationId));
+//        }
+
+//        return chatApplicationService.streamChat(new ChatParam(userId, finalConversationId, messageId, content, assistantMessageId, intentRecognitionResult));
+        // 这里需要再过程输出前面加上类似[PROGRESS]的标签，这样前端才能知道这个输出不是正文而是过程。
+        return Flux.just("[PROGRESS]:正在识别您的意图...")
+                .concatWith(
+                        Mono.fromCallable(() -> intentRecognitionService.chat(content))
+                                .subscribeOn(Schedulers.boundedElastic())
+                                .flatMapMany(intentRecognitionResult -> {
+                                    // 如果用户问题不相关，使用一个通用的LLM做对话
+                                    StringBuilder contentBuilder = new StringBuilder();
+                                    if (!intentRecognitionResult.related()) {
+                                        return Flux.concat(
+                                                Flux.just("[PROGRESS]:正在为您生成回答..."),
+                                                commonChatService.streamChat(content)
+                                                        .concatWith( Flux.just("[DONE]:" + finalConversationId)));
+                                    }
+
+                                    // 5. 相关问题，走RAG流程（进度由内部组件发出）
+                                    return chatApplicationService.streamChat(new ChatParam(userId, finalConversationId, messageId, content, assistantMessageId, intentRecognitionResult));
+                                })
+                )
+                .doOnError(e -> log.error("流式对话异常：conversationId={}", finalConversationId))
+                // 6. 在流末尾追加一条 [DONE] 事件，携带 conversationId
+                .concatWith(Mono.just("[DONE]:" + finalConversationId));
     }
 
     /**
