@@ -102,4 +102,22 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
         this.update(chatMessageEntity, new LambdaQueryWrapper<ChatMessageEntity>()
                 .eq(ChatMessageEntity::getMessageId, chatMessageId));
     }
+
+    @Override
+    public void updateRagReferences(String chatMessageId, List<ChatMessageEntity.RagReference> ragReferenceChunks) {
+        ChatMessageEntity chatMessageEntity = new ChatMessageEntity();
+        chatMessageEntity.setRagReferences(ragReferenceChunks);
+        this.update(chatMessageEntity,
+                new UpdateWrapper<ChatMessageEntity>().lambda()
+                        .eq(ChatMessageEntity::getMessageId, chatMessageId)
+        );
+    }
+
+    @Override
+    public void updateContent(String messageId, String content) {
+        ChatMessageEntity update = new ChatMessageEntity();
+        update.setContent(content);
+        this.update(update, new UpdateWrapper<ChatMessageEntity>().lambda()
+                .eq(ChatMessageEntity::getMessageId, messageId));
+    }
 }

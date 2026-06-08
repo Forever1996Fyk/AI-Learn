@@ -4,7 +4,9 @@ import com.forever1996Fyk.ai.intelligent.customer.ai.model.ChatParam;
 import com.forever1996Fyk.ai.intelligent.customer.ai.model.IntentRecognitionResult;
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.IntelligentCustomerChatAiService;
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.prompt.PromptService;
+import com.forever1996Fyk.ai.intelligent.customer.chat.memory.DatabaseChatMemoryStore;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatApplicationService;
+import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatMessageService;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.KnowledgeSegmentService;
 import com.forever1996Fyk.ai.intelligent.customer.rag.config.ElasticSearchConfiguration;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.aggregator.ProgressAwareContentAggregator;
@@ -46,6 +48,7 @@ import reactor.core.scheduler.Schedulers;
 
 import javax.sql.DataSource;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -71,7 +74,11 @@ public class ChatApplicationServiceImpl implements ChatApplicationService {
     @Autowired
     private PromptService promptService;
     @Autowired
+    private ChatMessageService chatMessageService;
+    @Autowired
     private KnowledgeSegmentService knowledgeSegmentService;
+    @Autowired
+    private DatabaseChatMemoryStore databaseChatMemoryStore;
 
     @Override
     public String chat(ChatParam chatParam) {
@@ -123,6 +130,8 @@ public class ChatApplicationServiceImpl implements ChatApplicationService {
                             ReRankingContentAggregator.builder()
                                     .scoringModel(BgeScoringModel.getInstance())
                                     .build(),
+                            chatParam.assistantMessageId(),
+                            chatMessageService,
                             processCallback
                     );
                     IntentRecognitionResult intentRecognitionResult = chatParam.intentRecognitionResult();
@@ -146,12 +155,23 @@ public class ChatApplicationServiceImpl implements ChatApplicationService {
                             .chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
                                     .id(memoryId)
                                     .maxMessages(10)
-                                    .chatMemoryStore(new InMemoryChatMemoryStore())
+                                    .chatMemoryStore(databaseChatMemoryStore)
                                     .build()
                             )
                             .build();
+
+                    // 订阅 LLM 流式输出，桥接到 sink
+                    AtomicBoolean firstToken = new AtomicBoolean(true);
+                    StringBuilder contentBuilder = new StringBuilder();
                     Disposable disposable = chatAiService.streamChat(chatParam.conversationId(), chatParam.content())
-                            .doOnComplete(() -> {})
+                            .doOnNext((token) -> {
+                                // （正常情况下由 ProgressAwareContentAggregator 已发出，此处为兜底）
+                                if (firstToken.compareAndSet(true, false)) {
+                                    // 标记已开始接收 token
+                                }
+                                contentBuilder.append(token);
+                            })
+                            .doOnComplete(() -> chatMessageService.updateContent(chatParam.assistantMessageId(), contentBuilder.toString()))
                             .subscribe(sink::next, sink::error, sink::complete);
                     // 取消时同步取消内部订阅
                     sink.onCancel(disposable::dispose);

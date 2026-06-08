@@ -2,6 +2,7 @@ package com.forever1996Fyk.ai.intelligent.customer.rag.modules.router;
 
 import com.alibaba.fastjson2.JSON;
 import com.forever1996Fyk.ai.intelligent.customer.rag.model.QueryRouteResult;
+import com.forever1996Fyk.ai.intelligent.customer.rag.modules.retriever.ProgressAwareContentRetriever;
 import dev.langchain4j.community.rag.content.retriever.neo4j.Neo4jText2CypherRetriever;
 import dev.langchain4j.experimental.rag.content.retriever.sql.SqlDatabaseContentRetriever;
 import dev.langchain4j.model.chat.ChatModel;
@@ -112,11 +113,28 @@ public class IntelligentCustomerQueryRouter implements QueryRouter {
 
         return switch (strategy) {
             case "relational_db" ->
-                    contentRetrievers.stream().filter(contentRetriever -> contentRetriever instanceof SqlDatabaseContentRetriever).toList();
+                    contentRetrievers.stream().filter(contentRetriever -> {
+                        if (contentRetriever instanceof ProgressAwareContentRetriever progressAwareContentRetriever) {
+                            ContentRetriever delegate = progressAwareContentRetriever.getDelegate();
+                            return delegate instanceof SqlDatabaseContentRetriever;
+                        }
+                        return contentRetriever instanceof SqlDatabaseContentRetriever;
+                    }).toList();
             case "graph_db" ->
-                    contentRetrievers.stream().filter(contentRetriever -> contentRetriever instanceof Neo4jText2CypherRetriever).toList();
+                    contentRetrievers.stream().filter(contentRetriever -> {
+                        if (contentRetriever instanceof ProgressAwareContentRetriever progressAwareContentRetriever) {
+                            ContentRetriever delegate = progressAwareContentRetriever.getDelegate();
+                            return delegate instanceof Neo4jText2CypherRetriever;
+                        }
+                        return contentRetriever instanceof Neo4jText2CypherRetriever;
+                    }).toList();
             case "knowledge_base" ->
-                    contentRetrievers.stream().filter(contentRetriever -> contentRetriever instanceof AbstractElasticsearchEmbeddingStore).toList();
+                    contentRetrievers.stream().filter(contentRetriever -> {
+                        if (contentRetriever instanceof ProgressAwareContentRetriever progressAwareContentRetriever) {
+                            return progressAwareContentRetriever.getDelegate() instanceof AbstractElasticsearchEmbeddingStore ;
+                        }
+                        return contentRetriever instanceof AbstractElasticsearchEmbeddingStore;
+                    }).toList();
             default -> List.of();
         };
     }

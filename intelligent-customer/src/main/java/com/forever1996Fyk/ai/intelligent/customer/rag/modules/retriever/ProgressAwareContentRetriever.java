@@ -69,4 +69,8 @@ public class ProgressAwareContentRetriever implements ContentRetriever {
         }
         return delegate.retrieve(query);
     }
+
+    public ContentRetriever getDelegate() {
+        return delegate;
+    }
 }

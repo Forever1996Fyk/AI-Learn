@@ -82,7 +82,7 @@ public class RagModuleController {
         IntentRecognitionResult intentRecognitionResult = AiServices.builder(IntentRecognitionService.class)
                 .chatModel(chatModel)
                 .build()
-                .chat(query);
+                .chat(UUID.randomUUID().toString(), query);
         return promptService.getPrompt(intentRecognitionResult);
     }
 
@@ -90,7 +90,7 @@ public class RagModuleController {
     public String testPromptRouter1(String query) {
 
 
-        IntentRecognitionResult intentRecognitionResult = AiServices.builder(IntentRecognitionService.class).chatModel(chatModel).build().chat(query);
+        IntentRecognitionResult intentRecognitionResult = AiServices.builder(IntentRecognitionService.class).chatModel(chatModel).build().chat(UUID.randomUUID().toString(), query);
         String prompt = promptService.getPrompt(intentRecognitionResult);
         ContentInjector contentInjector = new DefaultContentInjector(PromptTemplate.from(prompt));
 

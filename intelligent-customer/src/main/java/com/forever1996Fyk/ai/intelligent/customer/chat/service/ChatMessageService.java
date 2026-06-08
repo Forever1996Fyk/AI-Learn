@@ -72,4 +72,20 @@ public interface ChatMessageService extends IService<ChatMessageEntity> {
      * @param newQuery      新的查询内容
      */
     void updateTransformContent(String chatMessageId, String newQuery);
+
+    /**
+     * 更新RAG参考内容
+     *
+     * @param chatMessageId       聊天消息ID
+     * @param ragReferenceChunks  RAG参考内容块
+     */
+    void updateRagReferences(String chatMessageId, List<ChatMessageEntity.RagReference> ragReferenceChunks);
+
+    /**
+     * 更新内容
+     *
+     * @param assistantMessageId 助手消息ID
+     * @param content            内容
+     */
+    void updateContent(String assistantMessageId, String content);
 }
