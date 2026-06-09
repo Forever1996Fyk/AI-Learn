@@ -17,6 +17,16 @@ spring:
           model: qwen-plus
           temperature: 0.7
           maxTokens: 5000
+  datasource:
+    url: jdbc:mysql://${mysql.url}:3306/spring_ai_db2?useUnicode=true&characterEncoding=UTF-8&rewriteBatchedStatements=true
+    username: ${mysql.username}
+    password: ${mysql.pwd}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      initialization-fail-timeout: -1  # 禁用连接池初始化超时检查，允许启动时无数据库连接
+  sql:
+    init:
+      continue-on-error: true  # SQL初始化失败时继续启动
 #    mcp:
 #      client:
 #        enabled: true
