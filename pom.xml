@@ -20,6 +20,7 @@
         <module>milvus</module>
         <module>langchain4j</module>
         <module>intelligent-customer</module>
+        <module>agent</module>
     </modules>
 
     <properties>

@@ -146,15 +146,17 @@ public class IntelligentCustomerQueryTransformer implements QueryTransformer {
             progressCallback.accept("[PROGRESS]:正在优化您的问题...");
         }
         log.info("开始问题改写，原始问题：{}", query.text());
+        // 获取历史对话记录
         List<ChatMessage> chatMemory = query.metadata().chatMemory();
         Stopwatch stopwatch = Stopwatch.createStarted();
+        // 把历史对话记录格式化为 Prompt 上下文，并传给大模型
         String newQuery = chatModel.chat(createPrompt(query, format(chatMemory)).text());
         log.info("问题改写完成，改写结果：{}, 耗时: {}", newQuery, stopwatch.stop());
 
         Query compressedQuery = query.metadata() == null
                 ? Query.from(newQuery)
                 : Query.from(newQuery, query.metadata());
-        log.info("Compressed Success, source query: {}, compresswd query: {}", query, compressedQuery);
+        log.info("Compressed Success, source query: {}, compressed query: {}", query, compressedQuery);
         // 异步回写改写结果到chat_message
         if (StringUtils.hasText(chatMessageId)) {
             ChatMessageService chatMessageService = getChatMessageService();

@@ -158,6 +158,8 @@ public class ChatApplicationServiceImpl implements ChatApplicationService {
                                     .chatMemoryStore(databaseChatMemoryStore)
                                     .build()
                             )
+                            // 这里把意图识别的提示词直接作为系统提示词，来支持多轮对话，防止在多轮对话中，意图识别被重复传给大模型，导致意用户问题被意图识别污染
+                            .systemMessage(prompt)
                             .build();
 
                     // 订阅 LLM 流式输出，桥接到 sink

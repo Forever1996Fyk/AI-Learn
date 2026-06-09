@@ -1,6 +1,7 @@
 package com.forever1996Fyk.ai.intelligent.customer.rag.modules.router;
 
 import com.alibaba.fastjson2.JSON;
+import com.forever1996Fyk.ai.intelligent.customer.infra.json.JsonRepair;
 import com.forever1996Fyk.ai.intelligent.customer.rag.model.QueryRouteResult;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.retriever.ProgressAwareContentRetriever;
 import dev.langchain4j.community.rag.content.retriever.neo4j.Neo4jText2CypherRetriever;
@@ -107,7 +108,7 @@ public class IntelligentCustomerQueryRouter implements QueryRouter {
             System.out.println("[PROGRESS]:正在路由您的问题...");
         }
         String response = chatModel.chat(createPrompt(query).text());
-        QueryRouteResult queryRouteResult = JSON.parseObject(response, QueryRouteResult.class);
+        QueryRouteResult queryRouteResult = JSON.parseObject(JsonRepair.fixJson(response), QueryRouteResult.class);
         String strategy = queryRouteResult.strategy();
         log.info("Route Success , query: {} , strategy: {}", query, strategy);
 
