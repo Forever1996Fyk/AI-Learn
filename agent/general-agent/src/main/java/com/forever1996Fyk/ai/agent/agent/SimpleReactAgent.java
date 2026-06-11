@@ -1,13 +1,18 @@
 package com.forever1996Fyk.ai.agent.agent;
 
 import com.alibaba.cloud.ai.graph.agent.interceptor.ToolCallResponse;
+import com.forever1996Fyk.ai.agent.config.ChatModelConfig;
+import com.forever1996Fyk.ai.agent.tools.SearchService;
+import com.forever1996Fyk.ai.agent.tools.WeatherService;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ChatClientResponse;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -15,9 +20,11 @@ import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -224,7 +231,104 @@ public class SimpleReactAgent {
         );
     }
 
-    public static void main(String[] args) {
+    public static Builder builder() {
+        return new Builder();
+    }
 
+    public static class Builder {
+        private String name;
+        private ChatModel chatModel;
+        private List<ToolCallback> tools;
+        private String systemPrompt = "";
+
+        private int maxReflectionRounds;
+
+        private int maxRounds;
+
+        private List<Advisor> advisors;
+
+        private ChatMemory chatMemory;
+
+        public Builder chatMemory(ChatMemory chatMemory) {
+            this.chatMemory = chatMemory;
+            return this;
+        }
+
+        public Builder name(String name) {
+            this.name = name;
+            return this;
+        }
+
+        public Builder chatModel(ChatModel chatModel) {
+            this.chatModel = chatModel;
+            return this;
+        }
+
+        public Builder tools(ToolCallback... tools) {
+            this.tools = Arrays.asList(tools);
+            return this;
+        }
+
+        public Builder tools(List<ToolCallback> tools) {
+            this.tools = tools;
+            return this;
+        }
+
+        public Builder advisors(List<Advisor> advisors) {
+            this.advisors = advisors;
+            return this;
+        }
+
+        public Builder advisors(Advisor... advisors) {
+            this.advisors = Arrays.asList(advisors);
+            return this;
+        }
+
+        public Builder systemPrompt(String systemPrompt) {
+            this.systemPrompt = systemPrompt;
+            return this;
+        }
+
+        public Builder maxReflectionRounds(int maxReflectionRounds) {
+            this.maxReflectionRounds = maxReflectionRounds;
+            return this;
+        }
+
+        public Builder maxRounds(int maxRounds) {
+            this.maxRounds = maxRounds;
+            return this;
+        }
+
+        public SimpleReactAgent build() {
+            if (chatModel == null) {
+                throw new IllegalArgumentException("chatModel 不能为空！");
+            }
+            return new SimpleReactAgent(name, chatModel, tools, systemPrompt, maxRounds, chatMemory);
+        }
+    }
+
+    public static void main(String[] args) {
+        ChatModel chatModel = ChatModelConfig.getChatModel();
+
+        ToolCallback[] toolCallbacks = ToolCallbacks.from(new WeatherService(), new SearchService());
+
+        ChatMemory chatMemory = MessageWindowChatMemory.builder().maxMessages(20).build();
+
+        SimpleReactAgent agent = SimpleReactAgent.builder()
+                .name("simple-agent")
+                .chatModel(chatModel)
+                .tools(toolCallbacks)
+                .chatMemory(chatMemory)
+                .maxRounds(5)
+                .systemPrompt("你是专业的研究分析助手！")
+                .build();
+
+        String question = """
+                请你根据北京今天的天气、未来七天的天气趋势、以及上海今天的天气，并搜索北京天气的预警情况，生成一份不少于 600 字的综合分析报告。
+                """;
+
+//        System.out.println(agent.call(question));
+
+        System.out.println(agent.call(question));
     }
 }
