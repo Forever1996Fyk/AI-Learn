@@ -19,14 +19,22 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * @program: AI-Learn
@@ -38,7 +46,7 @@ public class SimpleReactAgent {
     public static final String REACT_AGENT_SYSTEM_PROMPT = """
             ## 角色
             你是一个严格遵循 ReAct 模式的智能 AI 助手，会通过 Reasoning → Act(ToolCall) → Observation 的反复循环来逐步解决任务。
-
+            
             ## 工具调用规则（极其重要）
             1. 如果需要调用工具：必须使用 OpenAI 官方 ToolCall 结构，并且 **只能通过工具调用字段输出**。
             2. 工具调用时：**禁止在 content 中出现任何形式的工具调用文本**（包括 JSON、<tool_call>、函数名、参数、思考、推理或描述）。
@@ -49,15 +57,15 @@ public class SimpleReactAgent {
                -参数必须简洁，不超过500个字符
                -切勿包含以前的工具结果、原始内容、HTML或长文本
                -仅包括工具所需的最小控制参数
-
+            
             ## 工具执行结果
             系统会自动将工具执行结果作为 ToolResponseMessage 注入上下文，你只需读取并决定下一步动作。
-
+            
             ## 最终答案规则
             1. 如果上下文已经拥有了完成任务的全部信息，则不要再调用任何工具。
             2. 在这种情况下，你必须输出最终自然语言答案，且 **禁止包含任何工具调用格式**。
             3. 最终答案只允许是自然语言，不能包含 JSON、思考过程、reasoning、ToolCall 或伪代码。
-
+            
             ## 强制要求（必须遵守）
             1. 工具调用消息必须只通过 ToolCall 字段输出，不允许在 content 字段体现工具调用迹象。
             2. 如果本轮没有工具调用，则视为任务完成，你必须输出最终答案。
@@ -211,6 +219,274 @@ public class SimpleReactAgent {
         }
     }
 
+    private enum RoundMode {
+        UNKNOWN,
+        FINAL_ANSWER,
+        TOOL_CALL,
+
+        ;
+    }
+
+    /**
+     * 每轮执行的状态标记位
+     */
+    private static class RoundState {
+        RoundMode mode = RoundMode.UNKNOWN;
+
+        boolean firstChunkHandled;
+
+        StringBuilder textBuffer = new StringBuilder();
+        List<AssistantMessage.ToolCall> toolCalls = Collections.synchronizedList(new ArrayList<>());
+    }
+
+
+    /**
+     * 流式输出
+     *
+     * @param question
+     * @return
+     */
+    public Flux<String> stream(String question) {
+        return streamInternal(null, question);
+    }
+
+    /**
+     * 流式输出(带会话记忆)
+     *
+     * @param conversationId
+     * @param question
+     * @return
+     */
+    public Flux<String> stream(String conversationId, String question) {
+        return streamInternal(conversationId, question);
+    }
+
+    private Flux<String> streamInternal(String conversationId, String question) {
+        List<Message> messages = Collections.synchronizedList(new ArrayList<>());
+        boolean useMemory = StringUtils.isNotBlank(conversationId) && chatMemory != null;
+
+        messages.add(new SystemMessage(REACT_AGENT_SYSTEM_PROMPT));
+        messages.add(new SystemMessage(systemPrompt));
+
+        // 加载历史记忆
+        if (useMemory) {
+            List<Message> history = chatMemory.get(conversationId);
+            if (CollectionUtils.isNotEmpty(history)) {
+                messages.addAll(history);
+            }
+        }
+
+        messages.add(new UserMessage("<question>" + question + "</question>"));
+
+        // 添加记忆
+        if (useMemory) {
+            chatMemory.add(conversationId, new UserMessage(question));
+        }
+
+        // 构建流式发射器
+        Sinks.Many<String> sink = Sinks.many().unicast().onBackpressureBuffer();
+        // 迭代轮次
+        AtomicLong roundCounter = new AtomicLong(0);
+        // 是否发送最终结果标记位
+        AtomicBoolean hasSentFinalResult = new AtomicBoolean(false);
+
+        // 收集最终答案，存储 memory
+        StringBuilder finalAnswerBuffer = new StringBuilder();
+
+        scheduleRound(messages, sink, roundCounter, hasSentFinalResult, finalAnswerBuffer, useMemory, conversationId);
+
+        return sink.asFlux()
+                // 收集最终答案
+                .doOnNext(finalAnswerBuffer::append)
+                .doOnCancel(() -> hasSentFinalResult.set(true))
+                .doFinally(signalType -> {
+                    log.info("最终答案：{}", finalAnswerBuffer);
+                });
+    }
+
+    private void scheduleRound(List<Message> messages, Sinks.Many<String> sink, AtomicLong roundCounter, AtomicBoolean hasSentFinalResult, StringBuilder finalAnswerBuffer, boolean useMemory, String conversationId) {
+        roundCounter.incrementAndGet();
+        RoundState roundState = new RoundState();
+        chatClient.prompt()
+                .messages(messages)
+                .stream()
+                .chatResponse()
+                .publishOn(Schedulers.boundedElastic())
+                .doOnNext(chunk -> processChunk(chunk, sink, roundState))
+                .doOnComplete(() -> finishRound(messages, sink, roundState, roundCounter, hasSentFinalResult, finalAnswerBuffer, useMemory, conversationId))
+                .doOnError(err -> {
+                    if (!hasSentFinalResult.get()) {
+                        hasSentFinalResult.set(true);
+                        sink.tryEmitError(err);
+                    }
+                })
+                .subscribe();
+    }
+
+    /**
+     * 一轮流式输出结束后，判断是否发送最终结果还是工具调用
+     *
+     * @param messages
+     * @param sink
+     * @param roundState
+     * @param roundCounter
+     * @param hasSentFinalResult
+     * @param finalAnswerBuffer
+     * @param useMemory
+     * @param conversationId
+     */
+    private void finishRound(List<Message> messages, Sinks.Many<String> sink, RoundState roundState, AtomicLong roundCounter, AtomicBoolean hasSentFinalResult, StringBuilder finalAnswerBuffer, boolean useMemory, String conversationId) {
+        // 如果整轮都没有 tool_call，那么表示就是最终答案
+        if (roundState.mode != RoundMode.TOOL_CALL) {
+            String finalText = roundState.textBuffer.toString();
+            sink.tryEmitComplete();
+            hasSentFinalResult.set(true);
+            if (useMemory) {
+                chatMemory.add(conversationId, new AssistantMessage(finalText));
+            }
+            return;
+        }
+
+        // 如果是工具调用，那么需要将工具调用结果发送给模型
+        AssistantMessage assistantMessage = AssistantMessage.builder()
+                .content(roundState.textBuffer.toString())
+                .toolCalls(roundState.toolCalls)
+                .build();
+        messages.add(assistantMessage);
+
+        // 判断是否达到最大轮次
+        if (maxRounds > 0 && roundCounter.get() >= maxRounds) {
+            log.info("达到最大轮次，结束对话");
+            if (!hasSentFinalResult.get()) {
+                // 强制输出结果
+                forceFinalStream(messages, sink, hasSentFinalResult);
+            }
+            return;
+        }
+
+        // 执行工具并迭代进入下一轮
+        executeToolCalls(roundState.toolCalls, messages, hasSentFinalResult, () -> {
+            if (!hasSentFinalResult.get()) {
+                scheduleRound(messages, sink, roundCounter, hasSentFinalResult, finalAnswerBuffer, useMemory, conversationId);
+            }
+        });
+    }
+
+    private void forceFinalStream(List<Message> messages, Sinks.Many<String> sink, AtomicBoolean hasSentFinalResult) {
+        // AssistantMessage包含toolcall，必须后面是ToolResponseMessage，否则会报错400
+        messages.add(new UserMessage("""
+                你已达到最大推理轮次限制。
+                请基于当前已有的上下文信息，
+                直接给出最终答案。
+                禁止再调用任何工具。
+                如果信息不完整，请合理总结和说明。
+                """));
+
+        chatClient.prompt()
+                .messages(messages)
+                .stream()
+                .chatResponse()
+                .publishOn(Schedulers.boundedElastic())
+                .doOnNext(chunk -> {
+                    if (chunk == null) {
+                        return;
+                    }
+                    String text = chunk.getResult().getOutput().getText();
+                    if (StringUtils.isNotBlank(text) && !hasSentFinalResult.get()) {
+                        sink.tryEmitNext(text);
+                    }
+                }).doOnComplete(() -> {
+                    hasSentFinalResult.set(true);
+                    sink.tryEmitComplete();
+                })
+                .doOnError(err -> {
+                    hasSentFinalResult.set(true);
+                    sink.tryEmitError(err);
+                })
+                .subscribe();
+    }
+
+    private void executeToolCalls(List<AssistantMessage.ToolCall> toolCalls, List<Message> messages, AtomicBoolean hasSentFinalResult, Runnable onComplete) {
+        AtomicInteger completedCount = new AtomicInteger(0);
+        int totalToolCalls = toolCalls.size();
+        for (AssistantMessage.ToolCall toolCall : toolCalls) {
+            // 这里使用 boundedElastic 线程池，避免阻塞主线程
+            Schedulers.boundedElastic().schedule(() -> {
+                if (hasSentFinalResult.get()) {
+                    completeToolCall(completedCount, totalToolCalls, onComplete);
+                    return;
+                }
+
+                String toolName = toolCall.name();
+                String arguments = toolCall.arguments();
+
+                ToolCallback callback = findTool(toolName);
+                if (callback == null) {
+                    addErrorToolResponse(messages, toolCall, "工具未找到：" + toolName);
+                    completeToolCall(completedCount, totalToolCalls, onComplete);
+                    return;
+                }
+
+                try {
+                    String result = callback.call(arguments);
+                    ToolResponseMessage.ToolResponse toolResponse = new ToolResponseMessage.ToolResponse(
+                            toolCall.id(),
+                            toolName,
+                            result
+                    );
+                    messages.add(ToolResponseMessage.builder().responses(List.of(toolResponse)).build());
+                } catch (Exception e) {
+                    addErrorToolResponse(messages, toolCall, "工具执行失败：" + e.getMessage());
+                } finally {
+                    completeToolCall(completedCount, totalToolCalls, onComplete);
+                }
+            });
+        }
+    }
+
+    private void completeToolCall(AtomicInteger completedCount, int totalToolCalls, Runnable onComplete) {
+        int current = completedCount.incrementAndGet();
+        if (current >= totalToolCalls) {
+            onComplete.run();
+        }
+    }
+
+    private void processChunk(ChatResponse chunk, Sinks.Many<String> sink, RoundState roundState) {
+        if (chunk == null) {
+            return;
+        }
+        Generation generation = chunk.getResult();
+        String text = generation.getOutput().getText();
+        // 虽然是分段输出，但是每一段输出都可以判断是否是 ToolCall（因为 OpenAI 的定义的 FunctionCall 固定格式，每次输出都可以判断是否有 ToolCall）
+        List<AssistantMessage.ToolCall> toolCalls = generation.getOutput().getToolCalls();
+
+        // 如果 ToolCall不为空，则表示是工具调用
+        if (!toolCalls.isEmpty()) {
+            roundState.mode = RoundMode.TOOL_CALL;
+            for (AssistantMessage.ToolCall toolCall : toolCalls) {
+                mergeToolCall(roundState, toolCall);
+            }
+            return;
+        }
+
+        if (StringUtils.isNotBlank(text)) {
+            sink.tryEmitNext(text);
+            roundState.textBuffer.append(text);
+        }
+    }
+
+    private void mergeToolCall(RoundState roundState, AssistantMessage.ToolCall toolCall) {
+        for (int i = 0; i < roundState.toolCalls.size(); i++) {
+            AssistantMessage.ToolCall existing = roundState.toolCalls.get(i);
+            if (existing.id().equals(toolCall.id())) {
+                String mergedArgs = existing.arguments() + toolCall.arguments();
+                roundState.toolCalls.set(i, new AssistantMessage.ToolCall(existing.id(), "function", existing.name(), mergedArgs));
+                return;
+            }
+        }
+        roundState.toolCalls.add(toolCall);
+    }
+
     private ToolCallback findTool(String name) {
         return tools.stream()
                 .filter(t -> t.getToolDefinition().name().equals(name))
@@ -329,6 +605,14 @@ public class SimpleReactAgent {
 
 //        System.out.println(agent.call(question));
 
-        System.out.println(agent.call(question));
+//        System.out.println(agent.call(question));
+
+        agent.stream(question)
+                .doOnNext(chunk -> {
+                    System.out.print(chunk);
+                })
+                .doOnError(error -> System.err.println("\n出错：" + error))
+                .doOnComplete(() -> System.out.println("\n\n=== 流式输出全部完成 ==="))
+                .blockLast();
     }
 }
