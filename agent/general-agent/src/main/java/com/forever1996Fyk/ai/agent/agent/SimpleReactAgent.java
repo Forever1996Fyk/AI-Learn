@@ -46,32 +46,33 @@ public class SimpleReactAgent {
     public static final String REACT_AGENT_SYSTEM_PROMPT = """
             ## 角色
             你是一个严格遵循 ReAct 模式的智能 AI 助手，会通过 Reasoning → Act(ToolCall) → Observation 的反复循环来逐步解决任务。
-            
+
             ## 工具调用规则（极其重要）
             1. 如果需要调用工具：必须使用 OpenAI 官方 ToolCall 结构，并且 **只能通过工具调用字段输出**。
             2. 工具调用时：**禁止在 content 中出现任何形式的工具调用文本**（包括 JSON、<tool_call>、函数名、参数、思考、推理或描述）。
             3. 工具调用消息必须是一次性、原子性输出，不得混杂任何解释或内容。
             4. 工具调用前后不得输出任何多余文字、标签、换行、推理轨迹或说明。
-            5. 调用工具时：
-               -工具参数必须是有效的JSON
-               -参数必须简洁，不超过500个字符
-               -切勿包含以前的工具结果、原始内容、HTML或长文本
-               -仅包括工具所需的最小控制参数
-            
+
             ## 工具执行结果
             系统会自动将工具执行结果作为 ToolResponseMessage 注入上下文，你只需读取并决定下一步动作。
-            
+
             ## 最终答案规则
             1. 如果上下文已经拥有了完成任务的全部信息，则不要再调用任何工具。
             2. 在这种情况下，你必须输出最终自然语言答案，且 **禁止包含任何工具调用格式**。
             3. 最终答案只允许是自然语言，不能包含 JSON、思考过程、reasoning、ToolCall 或伪代码。
-            
+
             ## 强制要求（必须遵守）
             1. 工具调用消息必须只通过 ToolCall 字段输出，不允许在 content 字段体现工具调用迹象。
             2. 如果本轮没有工具调用，则视为任务完成，你必须输出最终答案。
             3. 不允许重复调用同一个工具（名称 + 参数完全一致），除非工具调用失败。
             4. 禁止输出会干扰工具系统解析的任何结构（如 <reason>、<ToolCall>、函数 JSON、或模型内部思考）。
             5. 如果上下文已经包含了完成任务的全部信息，则不要再调用任何工具。
+            
+            ## 反思机制
+            如果在反思过程中，助手判断当前回答未能完全满足用户问题，或者达到最大反思轮次，你必须遵循以下规则：
+            1. 尽最大可能利用当前已有的信息给出完整回答，即使信息不完全，也要合理推断或总结现有数据。
+            2. 如果某些关键信息缺失，可在答案中用合理措辞提示用户，如“根据现有信息判断…”或“可进一步确认…”。
+            3. 最终输出必须尽量满足用户需求，保证逻辑清晰、结论可靠、表达完整，即便未能完美覆盖所有反思反馈。
             """;
     private static final Logger log = LoggerFactory.getLogger(SimpleReactAgent.class);
 
@@ -88,13 +89,25 @@ public class SimpleReactAgent {
 
     private ChatMemory chatMemory;
 
-    public SimpleReactAgent(String name, ChatModel chatModel, List<ToolCallback> tools, String systemPrompt, int maxRounds, ChatMemory chatMemory) {
+    /**
+     * 新增 reflection 相关参数
+     */
+    // 功能增强拦截器
+    private List<Advisor> advisors;
+    //最大反思轮数
+    private int maxReflectionRounds;
+
+
+    public SimpleReactAgent(String name, ChatModel chatModel, List<ToolCallback> tools, String systemPrompt, int maxRounds, ChatMemory chatMemory, List<Advisor> advisors, int maxReflectionRounds) {
         this.name = name;
         this.chatModel = chatModel;
         this.tools = tools;
         this.systemPrompt = systemPrompt;
         this.maxRounds = maxRounds;
         this.chatMemory = chatMemory;
+
+        this.advisors = advisors;
+        this.maxReflectionRounds = maxReflectionRounds;
 
         initChatClient();
 
@@ -112,6 +125,9 @@ public class SimpleReactAgent {
                     .build();
 
             ChatClient.Builder builder = ChatClient.builder(chatModel);
+            if (CollectionUtils.isNotEmpty(advisors)) {
+                builder.defaultAdvisors(advisors);
+            }
             this.chatClient = builder.defaultOptions(toolOptions)
                     .defaultToolCallbacks(tools)
                     .build();
@@ -160,6 +176,8 @@ public class SimpleReactAgent {
 
         int round = 0;
 
+        int reflectionRound = 0;
+
         while (true) {
             round++;
             if (maxRounds > 0 && round > maxRounds) {
@@ -187,6 +205,33 @@ public class SimpleReactAgent {
 
             // 没有工具调用，视为最终答案
             if (!clientResponse.chatResponse().hasToolCalls()) {
+                if (maxReflectionRounds >0 && Boolean.TRUE.equals(clientResponse.context().get("reflection.required"))) {
+                    if (reflectionRound >= maxReflectionRounds) {
+                        log.warn("======= Reflection 最大轮次已达，直接输出结论 =======");
+                        if (useMemory) {
+                            chatMemory.add(conversationId, new AssistantMessage(aiText));
+                        }
+                        return aiText;
+                    }
+                    reflectionRound++;
+                    log.info("===== 当前反思机制，第 {} 轮次 =====", reflectionRound);
+                    String feedback = (String) clientResponse.context().get("reflection.feedback");
+
+                    // 注入反思反馈，引导模型重新规划
+                    messages.add(new AssistantMessage("""
+                            【Reflection Feedback】
+                            %s
+
+                            请你根据以上反思意见重新规划任务，
+                            必要时可以重新调用工具，
+                            然后再给出最终答案。
+                            """.formatted(feedback)));
+                    continue;
+                }
+
+                if (useMemory) {
+                    chatMemory.add(conversationId, new AssistantMessage(aiText));
+                }
                 return aiText;
             }
 
@@ -579,7 +624,7 @@ public class SimpleReactAgent {
             if (chatModel == null) {
                 throw new IllegalArgumentException("chatModel 不能为空！");
             }
-            return new SimpleReactAgent(name, chatModel, tools, systemPrompt, maxRounds, chatMemory);
+            return new SimpleReactAgent(name, chatModel, tools, systemPrompt, maxRounds, chatMemory, advisors, maxReflectionRounds);
         }
     }
 
