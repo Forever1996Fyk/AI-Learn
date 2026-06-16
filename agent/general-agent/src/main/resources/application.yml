@@ -10,7 +10,7 @@ spring:
     web-application-type: reactive
   ai:
     openai:
-      api-key: sk-ddf99281394b4dd9a689cea51d40a121
+      api-key: sk-xxxxx
       base-url: https://dashscope.aliyuncs.com/compatible-mode/
       chat:
         options:
