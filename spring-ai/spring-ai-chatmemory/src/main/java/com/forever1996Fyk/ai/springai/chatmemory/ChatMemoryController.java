@@ -1,5 +1,6 @@
 package com.forever1996Fyk.ai.springai.chatmemory;
 
+import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
 import jakarta.annotation.Resource;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -31,7 +32,7 @@ public class ChatMemoryController {
     @Resource
     private ChatClient chatClient;
     @Resource
-    private ChatModel chatModel;
+    private DashScopeChatModel chatModel;
 
     @GetMapping("/memory2")
     public String memory2(String message) {
