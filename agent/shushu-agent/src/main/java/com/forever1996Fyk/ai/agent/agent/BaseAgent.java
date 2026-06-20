@@ -1,10 +1,12 @@
 package com.forever1996Fyk.ai.agent.agent;
 
+import com.forever1996Fyk.ai.agent.domain.AgentResponse;
 import com.forever1996Fyk.ai.agent.manager.AgentTaskManager;
 import com.forever1996Fyk.ai.agent.repository.bean.AiSessionEntity;
 import com.forever1996Fyk.ai.agent.service.AiSessionService;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import okio.Sink;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -15,6 +17,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 
 import java.util.List;
 import java.util.Objects;
@@ -36,7 +39,12 @@ public class BaseAgent {
     protected ChatMemory chatMemory;
 
     protected AiSessionService sessionService;
-    protected AgentTaskManager agentTaskManager;
+    protected AgentTaskManager taskManager;
+
+    /**
+     * 是否启用推荐问题功能
+     */
+    protected boolean enableRecommendations = true;
 
     // 计时器
     protected long startTime;
@@ -49,6 +57,7 @@ public class BaseAgent {
 
     protected Long currentSessionId;
     protected String currentQuestion;
+    protected String currentRecommendations;
 
     public BaseAgent(String name, ChatModel chatModel, String agentType) {
         this.name = name;
@@ -91,6 +100,17 @@ public class BaseAgent {
         return chatMemory;
     }
 
+    protected AgentTaskManager.TaskInfo registerTask(String conversationId, Sinks.Many<String> sink) {
+        if (conversationId != null && taskManager != null) {
+            AgentTaskManager.TaskInfo taskInfo = taskManager.registerTask(conversationId, sink, agentType);
+            if (taskInfo == null) {
+                log.warn("任务注册失败: conversationId={}", conversationId);
+            }
+            return taskInfo;
+        }
+        return null;
+    }
+
     /**
      * 检查当前会话是否正在运行任务
      *
@@ -98,6 +118,9 @@ public class BaseAgent {
      * @return 任务执行结果
      */
     protected Flux<String> checkRunningTask(String conversationId) {
+        if (conversationId != null && taskManager != null && taskManager.hasRunningTask(conversationId)) {
+            return Flux.error(new IllegalStateException("该会话正在执行中，请稍后再试"));
+        }
         return null;
     }
 
@@ -166,5 +189,66 @@ public class BaseAgent {
             firstResponseTime = System.currentTimeMillis() - startTime;
             log.debug("首次响应时间: {} ms", firstResponseTime);
         }
+    }
+
+    /**
+     * 记录使用的工具
+     *
+     * @param toolName 工具名称
+     */
+    protected void recordUsedTool(String toolName) {
+        if (usedTools != null && toolName != null) {
+            usedTools.add(toolName);
+        }
+    }
+
+
+    /**
+     * 创建text类型响应
+     *
+     * @param content 内容
+     * @return JSON格式的响应字符串
+     */
+    protected String createTextResponse(String content) {
+        return AgentResponse.text(content);
+    }
+
+    /**
+     * 创建thinking类型响应
+     *
+     * @param content 内容
+     * @return JSON格式的响应字符串
+     */
+    protected String createThinkingResponse(String content) {
+        return AgentResponse.thinking(content);
+    }
+
+    /**
+     * 创建reference类型响应
+     *
+     * @param content 内容（JSON数组字符串，count会自动计算）
+     * @return JSON格式的响应字符串
+     */
+    protected String createReferenceResponse(String content) {
+        return AgentResponse.reference(content);
+    }
+
+    /**
+     * 创建recommend类型响应
+     *
+     * @param content 内容（推荐问题JSON数组字符串）
+     * @return JSON格式的响应字符串
+     */
+    protected String createRecommendResponse(String content) {
+        return AgentResponse.recommend(content);
+    }
+
+
+    public boolean isEnableRecommendations() {
+        return enableRecommendations;
+    }
+
+    public void setEnableRecommendations(boolean enableRecommendations) {
+        this.enableRecommendations = enableRecommendations;
     }
 }
