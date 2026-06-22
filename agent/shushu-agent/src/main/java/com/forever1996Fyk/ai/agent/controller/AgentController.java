@@ -1,9 +1,11 @@
 package com.forever1996Fyk.ai.agent.controller;
 
 import com.alibaba.cloud.ai.graph.agent.Agent;
+import com.forever1996Fyk.ai.agent.agent.file.FileReactAgent;
 import com.forever1996Fyk.ai.agent.agent.websearch.WebSearchReactAgent;
 import com.forever1996Fyk.ai.agent.manager.AgentTaskManager;
 import com.forever1996Fyk.ai.agent.service.AiSessionService;
+import com.forever1996Fyk.ai.agent.tool.FileContentTool;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
@@ -13,6 +15,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +28,7 @@ import reactor.core.publisher.Flux;
 
 import java.net.http.HttpRequest;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +49,9 @@ public class AgentController implements InitializingBean {
     private AgentTaskManager taskManager;
     @Autowired
     private AiSessionService aiSessionService;
+
+    @Autowired
+    private FileContentTool fileContentTool;
     /**
      * 网页搜索工具回调
      */
@@ -109,6 +116,36 @@ public class AgentController implements InitializingBean {
         return result;
     }
 
+
+    @GetMapping(value = "/file/stream", produces = "text/event-stream;charset=UTF-8")
+    @Operation(summary = "文件问答", description = "接收用户查询并返回流式响应，基于上传的文件内容进行问答")
+    public Flux<String> fileStream(@RequestParam(required = true) String query,
+                                   @RequestParam(required = true) String conversationId,
+                                   @RequestParam(required = true) String fileId) {
+        log.info("收到文件问答请求: query={}, conversationId={}, fileId={}", query, conversationId, fileId);
+
+        if (query == null || query.trim().isEmpty()) {
+            log.warn("查询参数为空或无效");
+            return Flux.error(new IllegalArgumentException("查询参数不能为空"));
+        }
+
+        if (fileId == null || fileId.trim().isEmpty()) {
+            log.warn("文件ID参数为空");
+            return Flux.error(new IllegalArgumentException("文件ID不能为空"));
+        }
+
+        try {
+            FileReactAgent fileReactAgent = initFileReactAgent();
+            // 使用持久化记忆加载历史记录
+            ChatMemory persistentMemory = fileReactAgent.createPersistentChatMemory(conversationId, 30);
+            fileReactAgent.setChatMemory(persistentMemory);
+            return fileReactAgent.stream(conversationId, query, fileId);
+        } catch (Exception e) {
+            log.error("处理文件问答请求时发生错误: ", e);
+            return Flux.error(e);
+        }
+    }
+
     private WebSearchReactAgent initWebSearchAgent() {
         log.info("初始化WebSearchReactAgent...");
         return WebSearchReactAgent.builder()
@@ -154,5 +191,23 @@ public class AgentController implements InitializingBean {
 
        this.webSearchToolCallbacks =  provider.getToolCallbacks();
         log.info("网页搜索工具回调初始化完成，工具数量: {}", webSearchToolCallbacks.length);
+    }
+
+
+    /**
+     * 初始化文件问答 Agent
+     */
+    private FileReactAgent initFileReactAgent() {
+        log.info("初始化文件问答 Agent...");
+
+        List<ToolCallback> allTools = Arrays.asList(ToolCallbacks.from(fileContentTool));
+
+        return FileReactAgent.builder()
+                .name("file react")
+                .chatModel(chatModel)
+                .tools(allTools)
+                .sessionService(aiSessionService)
+                .taskManager(taskManager)
+                .build();
     }
 }

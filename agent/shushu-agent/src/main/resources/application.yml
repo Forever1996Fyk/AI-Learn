@@ -55,7 +55,7 @@ minio:
   url: http://127.0.0.1:9000/   # 记得改成你自己的
   accessKey: minioadmin # 记得改成你自己的
   secretKey: minioadmin # 记得改成你自己的
-  bucketName: rag-test2
+  bucketName: shushu-agent
   endpoint: http://127.0.0.1:9000/
 
 embeddings:

@@ -1,7 +1,10 @@
 package com.forever1996Fyk.ai.agent.service;
 
+import com.forever1996Fyk.ai.agent.domain.FileInfo;
 import com.forever1996Fyk.ai.agent.repository.bean.AiFileInfoEntity;
 import com.baomidou.mybatisplus.extension.service.IService;
+
+import java.util.List;
 
 /**
  * <p>
@@ -13,4 +16,19 @@ import com.baomidou.mybatisplus.extension.service.IService;
  */
 public interface AiFileInfoService extends IService<AiFileInfoEntity> {
 
+    void saveFileInfo(FileInfo fileInfo);
+
+    void updateFileInfo(FileInfo fileInfo);
+
+    FileInfo getFileInfoById(String fileId);
+
+    AiFileInfoEntity getEntityById(String fileId);
+
+    void deleteFileInfo(String fileId);
+
+    List<FileInfo> getAllFiles();
+
+    boolean exists(String fileId);
+
+    int getFileCount();
 }
