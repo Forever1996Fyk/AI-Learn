@@ -119,6 +119,13 @@ public class FileReactAgent  extends BaseAgent {
         return new Builder();
     }
 
+
+    @Override
+    public Flux<String> execute(String conversationId, String question) {
+        return streamInternal(conversationId, question);
+    }
+
+
     /**
      * 流式输出（带文件ID）
      */

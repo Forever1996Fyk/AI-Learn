@@ -114,7 +114,8 @@ public class WebSearchReactAgent extends BaseAgent {
         return new Builder();
     }
 
-    public Flux<String> stream(String conversationId, String question) {
+    @Override
+    public Flux<String> execute(String conversationId, String question) {
         return streamInternal(conversationId, question);
     }
 

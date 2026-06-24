@@ -30,7 +30,7 @@ import java.util.Set;
  * @create: 2026/6/19 23:08
  **/
 @Slf4j
-public class BaseAgent {
+public abstract class BaseAgent {
     protected final String name;
     protected final ChatModel chatModel;
     protected String agentType;
@@ -64,6 +64,16 @@ public class BaseAgent {
         this.chatModel = chatModel;
         this.agentType = agentType;
     }
+
+
+    /**
+     * 子类必须实现的执行方法
+     *
+     * @param conversationId 会话ID
+     * @param question       用户问题
+     * @return 流式输出
+     */
+    public abstract Flux<String> execute(String conversationId, String question);
 
     /**
      * 创建一个持久化的ChatMemory，用于保存会话历史

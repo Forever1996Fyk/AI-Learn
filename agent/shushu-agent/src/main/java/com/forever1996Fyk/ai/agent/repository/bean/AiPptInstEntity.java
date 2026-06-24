@@ -3,10 +3,16 @@ package com.forever1996Fyk.ai.agent.repository.bean;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.forever1996Fyk.ai.agent.enums.PptInstStatus;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.time.LocalDateTime;
 import java.util.Date;
 
 /**
@@ -17,9 +23,10 @@ import java.util.Date;
  * @author MichaelKai
  * @since 2026-06-19
  */
-@Getter
-@Setter
-@ToString
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @TableName("ai_ppt_inst")
 public class AiPptInstEntity {
 
@@ -79,7 +86,21 @@ public class AiPptInstEntity {
      */
     private String errorMsg;
 
-    private Date createTime;
+    private LocalDateTime createTime;
 
-    private Date updateTime;
+    private LocalDateTime updateTime;
+
+    /**
+     * 获取状态枚举
+     */
+    public PptInstStatus getStatusEnum() {
+        return PptInstStatus.fromCode(status);
+    }
+
+    /**
+     * 设置状态枚举
+     */
+    public void setStatusEnum(PptInstStatus statusEnum) {
+        this.status = statusEnum != null ? statusEnum.getCode() : null;
+    }
 }

@@ -92,7 +92,7 @@ public class AgentController implements InitializingBean {
             ChatMemory chatMemory = agent.createPersistentChatMemory(conversationId, 30);
             agent.setChatMemory(chatMemory);
             // 执行流式处理
-            return agent.stream(conversationId, query);
+            return agent.execute(conversationId, query);
         } catch (Exception e) {
             log.error("处理网页搜索请求时发生错误: ", e);
             return Flux.error(e);
