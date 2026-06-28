@@ -4,7 +4,7 @@ import lombok.Getter;
 
 /**
  * @program: AI-Learn
- * @description:
+ * @description: Schema生成策略
  * @author: YuKai Fan
  * @create: 2026/6/24 23:24
  **/

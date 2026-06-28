@@ -1,10 +1,16 @@
 package com.forever1996Fyk.ai.agent.controller;
 
-import com.alibaba.cloud.ai.graph.agent.Agent;
 import com.forever1996Fyk.ai.agent.agent.file.FileReactAgent;
+import com.forever1996Fyk.ai.agent.agent.pptx.PPTBuilderAgent;
 import com.forever1996Fyk.ai.agent.agent.websearch.WebSearchReactAgent;
 import com.forever1996Fyk.ai.agent.manager.AgentTaskManager;
+import com.forever1996Fyk.ai.agent.service.AiPptInstService;
+import com.forever1996Fyk.ai.agent.service.AiPptTemplateService;
 import com.forever1996Fyk.ai.agent.service.AiSessionService;
+import com.forever1996Fyk.ai.agent.service.ImageGenerationService;
+import com.forever1996Fyk.ai.agent.service.MinioService;
+import com.forever1996Fyk.ai.agent.service.PptIntentRecognizerService;
+import com.forever1996Fyk.ai.agent.service.PptRenderService;
 import com.forever1996Fyk.ai.agent.tool.FileContentTool;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
@@ -48,7 +54,17 @@ public class AgentController implements InitializingBean {
     @Autowired
     private AgentTaskManager taskManager;
     @Autowired
-    private AiSessionService aiSessionService;
+    private AiSessionService sessionService;
+    @Autowired
+    private MinioService minioService;
+    @Autowired
+    private AiPptInstService pptInstService;
+    @Autowired
+    private AiPptTemplateService pptTemplateService;
+    @Autowired
+    private ImageGenerationService imageGenerationService;
+    @Autowired
+    private PptRenderService pptRenderService;
 
     @Autowired
     private FileContentTool fileContentTool;
@@ -146,13 +162,36 @@ public class AgentController implements InitializingBean {
         }
     }
 
+    @GetMapping(value = "/pptx/stream", produces = "text/event-stream;charset=UTF-8")
+    @Operation(summary = "PPT 生成", description = "接收用户需求并返回流式响应，基于模板驱动生成PPT")
+    public Flux<String> pptxStream(@RequestParam(required = true) String query,
+                                   @RequestParam(required = true) String conversationId) {
+        log.info("收到PPT Builder请求: query={}, conversationId={}", query, conversationId);
+
+        if (query == null || query.trim().isEmpty()) {
+            log.warn("查询参数为空或无效");
+            return Flux.error(new IllegalArgumentException("查询参数不能为空"));
+        }
+
+        try {
+            PPTBuilderAgent pptBuilderAgent = initPPTBuilderAgent();
+            // 使用持久化记忆加载历史记录
+            ChatMemory persistentMemory = pptBuilderAgent.createPersistentChatMemory(conversationId, 30);
+            pptBuilderAgent.setChatMemory(persistentMemory);
+            return pptBuilderAgent.execute(conversationId, query);
+        } catch (Exception e) {
+            log.error("处理PPT Builder请求时发生错误: ", e);
+            return Flux.error(e);
+        }
+    }
+
     private WebSearchReactAgent initWebSearchAgent() {
         log.info("初始化WebSearchReactAgent...");
         return WebSearchReactAgent.builder()
                 .name("web react")
                 .chatModel(chatModel)
                 .tools(webSearchToolCallbacks)
-                .sessionService(aiSessionService)
+                .sessionService(sessionService)
                 .taskManager(taskManager)
                 .maxRounds(5)
                 .build();
@@ -206,8 +245,26 @@ public class AgentController implements InitializingBean {
                 .name("file react")
                 .chatModel(chatModel)
                 .tools(allTools)
-                .sessionService(aiSessionService)
+                .sessionService(sessionService)
                 .taskManager(taskManager)
                 .build();
+    }
+
+    /**
+     * 初始化PPT Builder Agent
+     */
+    private PPTBuilderAgent initPPTBuilderAgent() {
+        log.info("初始化PPT Builder Agent...");
+
+        return new PPTBuilderAgent(
+                chatModel,
+                Arrays.asList(webSearchToolCallbacks),
+                sessionService,
+                pptInstService,
+                pptTemplateService,
+                taskManager,
+                pptRenderService,
+                imageGenerationService,
+                minioService);
     }
 }

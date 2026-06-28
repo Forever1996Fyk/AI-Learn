@@ -52,6 +52,7 @@ public class PPTBuilderAgent extends BaseAgent {
 
 
     public PPTBuilderAgent(ChatModel chatModel,
+                           List<ToolCallback> toolCallbacks,
                            AiSessionService sessionService,
                            AiPptInstService pptInstService,
                            AiPptTemplateService pptTemplateService,
@@ -59,7 +60,6 @@ public class PPTBuilderAgent extends BaseAgent {
                            PptRenderService pptRenderService,
                            ImageGenerationService imageGenerationService,
                            MinioService minioService,
-                           List<ToolCallback> toolCallbacks,
                            PptIntentRecognizerService intentRecognizerService) {
         super("PPTBuilderAgent", chatModel, "pptx");
         this.sessionService = sessionService;
@@ -82,14 +82,14 @@ public class PPTBuilderAgent extends BaseAgent {
     }
 
     public PPTBuilderAgent(ChatModel chatModel,
+                           List<ToolCallback> toolCallbacks,
                            AiSessionService sessionService,
                            AiPptInstService pptInstService,
                            AiPptTemplateService pptTemplateService,
                            AgentTaskManager agentTaskManager,
                            PptRenderService pptRenderService,
                            ImageGenerationService imageGenerationService,
-                           MinioService minioService,
-                           List<ToolCallback> toolCallbacks) {
+                           MinioService minioService) {
         super("PPTBuilderAgent", chatModel, "pptx");
         this.sessionService = sessionService;
         this.taskManager = agentTaskManager;

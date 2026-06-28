@@ -79,3 +79,7 @@ logging:
     io:
       modelcontextprotocol:
         client: ERROR
+
+grsai:
+  nanobanana:
+    api-key: sk-xxxxxx

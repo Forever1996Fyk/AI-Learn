@@ -55,4 +55,64 @@ public class AiPptInstServiceImpl extends ServiceImpl<AiPptInstMapper, AiPptInst
                 .last("LIMIT 1");
         return getOne(wrapper);
     }
+
+    @Override
+    public boolean updateRequirement(Long id, String requirement, PptInstStatus status) {
+        AiPptInstEntity inst = new AiPptInstEntity();
+        inst.setId(id);
+        inst.setRequirement(requirement);
+        inst.setStatus(status.getCode());
+        inst.setUpdateTime(LocalDateTime.now());
+        return updateById(inst);
+    }
+
+    @Override
+    public boolean updateSearchInfo(Long id, String searchInfo, PptInstStatus status) {
+        AiPptInstEntity inst = new AiPptInstEntity();
+        inst.setId(id);
+        inst.setSearchInfo(searchInfo);
+        inst.setStatus(status.getCode());
+        inst.setUpdateTime(LocalDateTime.now());
+        return updateById(inst);
+    }
+
+    @Override
+    public boolean updateTemplateCode(Long id, String templateCode, PptInstStatus status) {
+        AiPptInstEntity inst = new AiPptInstEntity();
+        inst.setId(id);
+        inst.setTemplateCode(templateCode);
+        inst.setStatus(status.getCode());
+        inst.setUpdateTime(LocalDateTime.now());
+        return updateById(inst);
+    }
+
+    @Override
+    public boolean updateOutline(Long id, String outline, PptInstStatus status) {
+        AiPptInstEntity inst = new AiPptInstEntity();
+        inst.setId(id);
+        inst.setOutline(outline);
+        inst.setStatus(status.getCode());
+        inst.setUpdateTime(LocalDateTime.now());
+        return updateById(inst);
+    }
+
+    @Override
+    public boolean updatePptSchema(Long id, String pptSchema, PptInstStatus status) {
+        AiPptInstEntity inst = new AiPptInstEntity();
+        inst.setId(id);
+        inst.setPptSchema(pptSchema);
+        inst.setStatus(status.getCode());
+        inst.setUpdateTime(LocalDateTime.now());
+        return updateById(inst);
+    }
+
+    @Override
+    public boolean updateFileUrl(Long id, String fileUrl, PptInstStatus status) {
+        AiPptInstEntity inst = new AiPptInstEntity();
+        inst.setId(id);
+        inst.setFileUrl(fileUrl);
+        inst.setStatus(status.getCode());
+        inst.setUpdateTime(LocalDateTime.now());
+        return updateById(inst);
+    }
 }
