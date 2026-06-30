@@ -1,5 +1,6 @@
 package com.forever1996Fyk.ai.agent.controller;
 
+import com.forever1996Fyk.ai.agent.agent.deepresearch.PlanExecuteAgent;
 import com.forever1996Fyk.ai.agent.agent.file.FileReactAgent;
 import com.forever1996Fyk.ai.agent.agent.pptx.PPTBuilderAgent;
 import com.forever1996Fyk.ai.agent.agent.websearch.WebSearchReactAgent;
@@ -185,6 +186,30 @@ public class AgentController implements InitializingBean {
         }
     }
 
+    @GetMapping(value = "/deep/stream", produces = "text/event-stream;charset=UTF-8")
+    @Operation(summary = "深度研究", description = "接收用户查询并返回流式响应，使用计划-执行模式进行深度研究")
+    public Flux<String> deepStream(@RequestParam(required = true) String query,
+                                   @RequestParam(required = true) String conversationId) {
+        log.info("收到深度研究请求: query={}, conversationId={}", query, conversationId);
+
+        if (query == null || query.trim().isEmpty()) {
+            log.warn("查询参数为空或无效");
+            return Flux.error(new IllegalArgumentException("查询参数不能为空"));
+        }
+
+        try {
+            PlanExecuteAgent planExecuteAgent = initPlanExecuteAgent();
+            // 使用持久化记忆加载历史记录
+            ChatMemory persistentMemory = planExecuteAgent.createPersistentChatMemory(conversationId, 30);
+            planExecuteAgent.setChatMemory(persistentMemory);
+            return planExecuteAgent.stream(conversationId, query);
+        } catch (Exception e) {
+            log.error("处理深度研究请求时发生错误: ", e);
+            return Flux.error(e);
+        }
+    }
+
+
     private WebSearchReactAgent initWebSearchAgent() {
         log.info("初始化WebSearchReactAgent...");
         return WebSearchReactAgent.builder()
@@ -266,5 +291,20 @@ public class AgentController implements InitializingBean {
                 pptRenderService,
                 imageGenerationService,
                 minioService);
+    }
+
+    /**
+     * 初始化 PlanExecute Agent
+     */
+    private PlanExecuteAgent initPlanExecuteAgent() {
+        log.info("初始化 PlanExecute Agent...");
+
+        return PlanExecuteAgent.builder()
+                .chatModel(chatModel)
+                .tools(webSearchToolCallbacks)
+                .sessionService(sessionService)
+                .taskManager(taskManager)
+                .maxRounds(3)
+                .build();
     }
 }

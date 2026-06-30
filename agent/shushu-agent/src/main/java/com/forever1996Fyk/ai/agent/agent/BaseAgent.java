@@ -261,4 +261,37 @@ public abstract class BaseAgent {
     public void setEnableRecommendations(boolean enableRecommendations) {
         this.enableRecommendations = enableRecommendations;
     }
+
+    /**
+     * 清除工具记录
+     */
+    protected void clearUsedTools() {
+        if (usedTools != null) {
+            usedTools.clear();
+        }
+    }
+
+    /**
+     * 获取历史消息列表
+     *
+     * @param conversationId 会话ID
+     * @return 历史消息列表
+     */
+    protected List<Message> getChatHistory(String conversationId) {
+        if (conversationId != null && chatMemory != null) {
+            return chatMemory.get(conversationId);
+        }
+        return null;
+    }
+
+    /**
+     * 创建Agent响应
+     *
+     * @param content 内容
+     * @param type    类型
+     * @return JSON格式的响应字符串
+     */
+    protected String createResponse(String content, String type) {
+        return AgentResponse.json(type, content);
+    }
 }
