@@ -3,6 +3,10 @@ package com.forever1996Fyk.ai.agent.controller;
 import com.forever1996Fyk.ai.agent.agent.deepresearch.PlanExecuteAgent;
 import com.forever1996Fyk.ai.agent.agent.file.FileReactAgent;
 import com.forever1996Fyk.ai.agent.agent.pptx.PPTBuilderAgent;
+import com.forever1996Fyk.ai.agent.agent.skills.SkillsReactAgent;
+import com.forever1996Fyk.ai.agent.agent.skills.manual.SkillManager;
+import com.forever1996Fyk.ai.agent.agent.skills.manual.config.SkillConfig;
+import com.forever1996Fyk.ai.agent.agent.skills.manual.tool.ReadSkillTool;
 import com.forever1996Fyk.ai.agent.agent.websearch.WebSearchReactAgent;
 import com.forever1996Fyk.ai.agent.manager.AgentTaskManager;
 import com.forever1996Fyk.ai.agent.service.AiPptInstService;
@@ -12,7 +16,11 @@ import com.forever1996Fyk.ai.agent.service.ImageGenerationService;
 import com.forever1996Fyk.ai.agent.service.MinioService;
 import com.forever1996Fyk.ai.agent.service.PptIntentRecognizerService;
 import com.forever1996Fyk.ai.agent.service.PptRenderService;
+import com.forever1996Fyk.ai.agent.tool.BashTool;
 import com.forever1996Fyk.ai.agent.tool.FileContentTool;
+import com.forever1996Fyk.ai.agent.tool.FileSystemTool;
+import com.forever1996Fyk.ai.agent.tool.GrepTool;
+import com.forever1996Fyk.ai.agent.tool.ToolMergeUtils;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
@@ -81,6 +89,12 @@ public class AgentController implements InitializingBean {
      */
     @Value("${tavily.mcp-url}")
     private String tavilyMcpUrl;
+
+    /**
+     * Skills 目录路径
+     */
+    @Value("${skills.directory:}")
+    private String skillsDirectory;
 
     /**
      * 接收用户查询并返回流式响应， 使用联网搜索获取信息
@@ -207,6 +221,71 @@ public class AgentController implements InitializingBean {
             log.error("处理深度研究请求时发生错误: ", e);
             return Flux.error(e);
         }
+    }
+
+    @GetMapping(value = "/skills/stream", produces = "text/event-stream;charset=UTF-8")
+    @Operation(summary = "Skills智能问答", description = "接收用户查询并返回流式响应，自动判断使用技能/搜索/文件等能力")
+    public Flux<String> skillsStream(@RequestParam(required = true) String query,
+                                     @RequestParam(required = true) String conversationId,
+                                     @RequestParam(required = false) String fileId) {
+        log.info("收到Skills请求: query={}, conversationId={}, fileId={}", query, conversationId, fileId);
+
+        if (query == null || query.trim().isEmpty()) {
+            log.warn("查询参数为空或无效");
+            return Flux.error(new IllegalArgumentException("查询参数不能为空"));
+        }
+
+        try {
+            // springai原生的方式
+//            SkillsReactAgent skillsReactAgent = initSkillsReactAgent();
+            // 手动构建的skills
+            SkillsReactAgent skillsReactAgent = initManualSkillsReactAgent();
+            ChatMemory persistentMemory = skillsReactAgent.createPersistentChatMemory(conversationId, 30);
+            skillsReactAgent.setChatMemory(persistentMemory);
+            return skillsReactAgent.stream(conversationId, query, fileId);
+        } catch (Exception e) {
+            log.error("处理Skills请求时发生错误: ", e);
+            return Flux.error(e);
+        }
+    }
+
+    /**
+     * 初始化 Skills React Agent（手动开发方式）
+     */
+    private SkillsReactAgent initManualSkillsReactAgent() {
+        log.info("初始化 Skills React Agent (manual)...");
+
+        // 1. 通过 SkillConfig 配置技能目录，构建 SkillManager
+        SkillConfig skillConfig = SkillConfig.builder()
+                .addDirectory(skillsDirectory)
+                .build();
+        SkillManager skillManager = SkillManager.create(skillConfig);
+
+        // 2. 将技能列表格式化为系统提示词的一部分
+        String skillsPrompt = skillManager.formatPrompt();
+        log.info("手动 Skills 模式：加载了 {} 个技能", skillManager.getSkillCount());
+
+        // 3. 创建 ReadSkillTool 作为独立的工具回调
+        ToolCallback readSkillTool = ReadSkillTool.create(skillManager.getRegistry());
+
+        // 4. 合并工具：搜索 + 文件 + read_skill + 文件系统 + 搜索 + Bash
+        ToolCallback[] allTools = ToolMergeUtils.mergeTools(
+                webSearchToolCallbacks,
+                ToolCallbacks.from(fileContentTool),
+                new ToolCallback[]{readSkillTool},
+                FileSystemTool.create(),
+                GrepTool.create(),
+                BashTool.create()
+        );
+        return SkillsReactAgent.builder()
+                .name("manual-skills")
+                .chatModel(chatModel)
+                .tools(allTools)
+                .systemPrompt(skillsPrompt)
+                .sessionService(sessionService)
+                .taskManager(taskManager)
+                .maxRounds(10)
+                .build();
     }
 
 

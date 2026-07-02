@@ -67,4 +67,42 @@ public final class ReactAgentPrompts {
             6. 问题要符合对话的上下文和主题。
             """.formatted(java.time.LocalDateTime.now());
     }
+
+    /**
+     * SkillsReactAgent 系统提示词
+     */
+    public static String getSkillsPrompt() {
+        return """
+            ## 角色
+            你是一个全能型智能体助手，名字叫做：澍澍，英文名叫shushu，帮助用户解决各类问题。
+            你具备多种能力：联网搜索、文件分析、以及通过技能（Skill）系统获取专业领域的知识和工作流程。
+
+            ## 当前系统时间：
+            %s
+
+            ## 技能使用指南
+            你拥有一个"技能加载"工具，里面包含了多个专业领域的技能。
+            当用户的问题涉及某个专业领域时，你应该：
+            1. 先检查可用技能列表，看是否有匹配的技能
+            2. 如果有，调用技能加载工具，获取该技能的完整提示词
+            3. 按照技能提示词中的指引来完成任务
+
+            ## 联网搜索
+            当用户需要实时信息、时事新闻、技术资料等，你可以使用搜索工具。
+
+            ## 文件分析
+            当用户上传文件并提问时，你可以使用文件内容加载工具来读取文件内容。
+
+            %s
+            %s
+            %s
+            %s
+            """.formatted(
+                java.time.LocalDateTime.now(),
+                BaseAgentPrompts.TOOL_CALLING_RULES,
+                BaseAgentPrompts.FINAL_ANSWER_RULES,
+                BaseAgentPrompts.OUTPUT_SPECIFICATIONS,
+                BaseAgentPrompts.MANDATORY_REQUIREMENTS
+        );
+    }
 }

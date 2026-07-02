@@ -83,3 +83,6 @@ logging:
 grsai:
   nanobanana:
     api-key: sk-xxxxxx
+
+skills:
+  directory: /Users/fanyukai/Desktop/develop/ai/skill/michaelkai_skill/.claude/skills
