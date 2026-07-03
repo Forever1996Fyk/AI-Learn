@@ -12,7 +12,7 @@ spring:
       base-url: https://dashscope.aliyuncs.com/compatible-mode/
       chat:
         options:
-          model: qwen-plus
+          model: MiniMax-M3
           temperature: 0.7
       embedding:
         base-url: https://dashscope.aliyuncs.com/compatible-mode/

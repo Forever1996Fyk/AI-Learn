@@ -20,6 +20,7 @@ import com.forever1996Fyk.ai.agent.tool.BashTool;
 import com.forever1996Fyk.ai.agent.tool.FileContentTool;
 import com.forever1996Fyk.ai.agent.tool.FileSystemTool;
 import com.forever1996Fyk.ai.agent.tool.GrepTool;
+import com.forever1996Fyk.ai.agent.tool.SkillsTool;
 import com.forever1996Fyk.ai.agent.tool.ToolMergeUtils;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
@@ -237,9 +238,9 @@ public class AgentController implements InitializingBean {
 
         try {
             // springai原生的方式
-//            SkillsReactAgent skillsReactAgent = initSkillsReactAgent();
+            SkillsReactAgent skillsReactAgent = initSkillsReactAgent();
             // 手动构建的skills
-            SkillsReactAgent skillsReactAgent = initManualSkillsReactAgent();
+//            SkillsReactAgent skillsReactAgent = initManualSkillsReactAgent();
             ChatMemory persistentMemory = skillsReactAgent.createPersistentChatMemory(conversationId, 30);
             skillsReactAgent.setChatMemory(persistentMemory);
             return skillsReactAgent.stream(conversationId, query, fileId);
@@ -247,6 +248,33 @@ public class AgentController implements InitializingBean {
             log.error("处理Skills请求时发生错误: ", e);
             return Flux.error(e);
         }
+    }
+
+    /**
+     * 初始化 Skills React Agent（Spring AI 原生方式）
+     */
+    private SkillsReactAgent initSkillsReactAgent() {
+        log.info("初始化 Skills React Agent (native)...");
+
+        // 合并工具：搜索 + 文件 + Skills + 文件系统 + 搜索 + Bash
+        ToolCallback[] allTools = ToolMergeUtils.mergeTools(
+                webSearchToolCallbacks,
+                ToolCallbacks.from(fileContentTool),
+                new ToolCallback[]{SkillsTool.builder()
+                        .addSkillsDirectory(skillsDirectory)
+                        .build()},
+                FileSystemTool.create(),
+                GrepTool.create(),
+                BashTool.create()
+        );
+
+        return SkillsReactAgent.builder()
+                .name("skills")
+                .chatModel(chatModel)
+                .tools(allTools)
+                .sessionService(sessionService)
+                .taskManager(taskManager)
+                .build();
     }
 
     /**

@@ -69,6 +69,7 @@ public class ThinkTagParser {
             int nextTagPos;
             boolean isStartTag;
 
+            // 既没有左括号也没有有括号，表示标签中的内容
             if (thinkStartIdx == -1 && thinkEndIdx == -1) {
                 String remaining = chunk.substring(index);
                 if (!remaining.isEmpty()) {
@@ -92,6 +93,12 @@ public class ThinkTagParser {
                 }
             }
 
+            /*
+            防止出现think标签拆开，比如：
+            chunk1: <thin
+            chunk2: k>
+            虽然目前大模型的训练把think当做了一个token，但是这里还是做了防御性编程
+             */
             int tagEnd = chunk.indexOf('>', nextTagPos);
             if (tagEnd == -1) {
                 currentInThink = isStartTag;
