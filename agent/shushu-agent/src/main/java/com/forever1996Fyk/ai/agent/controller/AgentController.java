@@ -14,7 +14,6 @@ import com.forever1996Fyk.ai.agent.service.AiPptTemplateService;
 import com.forever1996Fyk.ai.agent.service.AiSessionService;
 import com.forever1996Fyk.ai.agent.service.ImageGenerationService;
 import com.forever1996Fyk.ai.agent.service.MinioService;
-import com.forever1996Fyk.ai.agent.service.PptIntentRecognizerService;
 import com.forever1996Fyk.ai.agent.service.PptRenderService;
 import com.forever1996Fyk.ai.agent.tool.BashTool;
 import com.forever1996Fyk.ai.agent.tool.FileContentTool;

@@ -8,11 +8,13 @@ server:
 spring:
   ai:
     openai:
-      api-key: ${dashscope.api-key}
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/
+#      api-key: ${dashscope.api-key}
+#      base-url: https://dashscope.aliyuncs.com/compatible-mode/
+      api-key: sk-api-SGAvfsJ9tTM03twSGaSETq3r7fad04Aisc_3_8ICPS8PTRoWaZjAN4cz-W4M8Ymj3IED0vCsnFp8eLtg_vs6RjZQ12TJSTnchEyD2-iFkTGejOjiaD0Vo40
+      base-url: https://api.minimaxi.com
       chat:
         options:
-          model: qwen-plus
+          model: MiniMax-M2.7
           temperature: 0.7
       embedding:
         base-url: https://dashscope.aliyuncs.com/compatible-mode/

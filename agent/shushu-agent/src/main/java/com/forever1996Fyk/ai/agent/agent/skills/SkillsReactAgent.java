@@ -2,6 +2,8 @@ package com.forever1996Fyk.ai.agent.agent.skills;
 
 import com.alibaba.fastjson2.JSON;
 import com.forever1996Fyk.ai.agent.agent.BaseAgent;
+import com.forever1996Fyk.ai.agent.context.ContextCompactor;
+import com.forever1996Fyk.ai.agent.context.ContextPolicy;
 import com.forever1996Fyk.ai.agent.domain.SaveQuestionRequest;
 import com.forever1996Fyk.ai.agent.domain.UpdateAnswerRequest;
 import com.forever1996Fyk.ai.agent.domain.event.AgentStreamEvent;
@@ -62,11 +64,12 @@ public class SkillsReactAgent extends BaseAgent {
     private int maxRounds;
     private int maxRetries;
     private String currentFileId;
+    private final ContextCompactor contextCompactor;
 
 
     public SkillsReactAgent(String name, ChatModel chatModel, List<ToolCallback> tools,
                             String systemPrompt, int maxRounds, int maxRetries, ChatMemory chatMemory,
-                            AiSessionService sessionService, AgentTaskManager taskManager) {
+                            AiSessionService sessionService, AgentTaskManager taskManager, ContextPolicy contextPolicy) {
         super(name, chatModel, "skills");
         this.tools = tools;
         this.systemPrompt = systemPrompt;
@@ -78,6 +81,11 @@ public class SkillsReactAgent extends BaseAgent {
         this.usedTools = new HashSet<>();
 
         initChatClient();
+
+        // 初始化上下文压缩器（不配置 contextPolicy 时不启用）
+        this.contextCompactor = contextPolicy != null
+                ? new ContextCompactor(contextPolicy, chatModel)
+                : null;
 
         if (this.chatClient == null) {
             throw new IllegalStateException("ChatClient 初始化失败！");
@@ -98,6 +106,7 @@ public class SkillsReactAgent extends BaseAgent {
         private ChatMemory chatMemory;
         private AiSessionService sessionService;
         private AgentTaskManager taskManager;
+        private ContextPolicy contextPolicy;
 
         public Builder name(String name) {
             this.name = name;
@@ -149,6 +158,11 @@ public class SkillsReactAgent extends BaseAgent {
             return this;
         }
 
+        public Builder contextPolicy(ContextPolicy contextPolicy) {
+            this.contextPolicy = contextPolicy;
+            return this;
+        }
+
         public SkillsReactAgent build() {
             if (chatModel == null) {
                 throw new IllegalArgumentException("chatModel 不能为空！");
@@ -157,7 +171,7 @@ public class SkillsReactAgent extends BaseAgent {
                 throw new IllegalArgumentException("tools 不能为空！");
             }
             return new SkillsReactAgent(name, chatModel, tools, systemPrompt, maxRounds, maxRetries,
-                    chatMemory, sessionService, taskManager);
+                    chatMemory, sessionService, taskManager, contextPolicy);
         }
     }
 
@@ -300,6 +314,12 @@ public class SkillsReactAgent extends BaseAgent {
                                int retryAttempt) {
         long round = roundCounter.incrementAndGet();
         log.info("=== Round {} 开始 === 消息数: {} retryAttempt: {}", round, messages.size(), retryAttempt);
+
+        // 上下文压缩（每轮 LLM 调用前执行）
+        if (contextCompactor != null) {
+            contextCompactor.compact(messages, currentQuestion);
+            log.info("=== Round {} 压缩后消息数: {} ===", round, messages.size());
+        }
 
         RoundState state = new RoundState();
         Disposable disposable = chatClient.prompt()
