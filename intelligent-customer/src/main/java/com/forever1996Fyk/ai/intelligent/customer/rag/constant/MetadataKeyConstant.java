@@ -42,4 +42,9 @@ public class MetadataKeyConstant {
      * 文件地址
      */
     public static final String URL = "url";
+
+    /**
+     * 跳过重排序/融合标记，true表示该内容来自结构化查询（SQL/Cypher），不需要参与重排序和融合
+     */
+    public static final String SKIP_RERANK = "skipRerank";
 }

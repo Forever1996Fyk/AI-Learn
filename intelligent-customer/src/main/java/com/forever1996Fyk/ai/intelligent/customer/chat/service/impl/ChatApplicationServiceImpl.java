@@ -12,6 +12,7 @@ import com.forever1996Fyk.ai.intelligent.customer.rag.config.ElasticSearchConfig
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.aggregator.ProgressAwareContentAggregator;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.reranker.BgeScoringModel;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.retriever.IntelligentCustomerElasticsearchContentRetriever;
+import com.forever1996Fyk.ai.intelligent.customer.rag.modules.retriever.IntelligentCustomerNeo4jContentRetriever;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.retriever.ProgressAwareContentRetriever;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.router.IntelligentCustomerQueryRouter;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.transformer.IntelligentCustomerQueryTransformer;
@@ -37,16 +38,21 @@ import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchConfigurationFullText;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchConfigurationKnn;
 import dev.langchain4j.store.memory.chat.InMemoryChatMemoryStore;
+import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.client.RestClient;
 import org.jetbrains.annotations.NotNull;
 import org.neo4j.driver.Driver;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
 import javax.sql.DataSource;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -57,6 +63,7 @@ import java.util.function.Consumer;
  * @author: YuKai Fan
  * @create: 2026/6/7 21:53
  **/
+@Slf4j
 @Service
 public class ChatApplicationServiceImpl implements ChatApplicationService {
     @Autowired
@@ -79,6 +86,9 @@ public class ChatApplicationServiceImpl implements ChatApplicationService {
     private KnowledgeSegmentService knowledgeSegmentService;
     @Autowired
     private DatabaseChatMemoryStore databaseChatMemoryStore;
+
+    @Value("classpath:prompts/text-to-cypher-prompt.txt")
+    private Resource textToCypherPrompt;
 
     @Override
     public String chat(ChatParam chatParam) {
@@ -118,12 +128,20 @@ public class ChatApplicationServiceImpl implements ChatApplicationService {
                             .build(), processCallback);
 
                     // 构建图数据检索（带进度回调）
-                    ProgressAwareContentRetriever neo4jRetriever = new ProgressAwareContentRetriever(Neo4jText2CypherRetriever.builder()
-                            .graph(Neo4jGraph.builder()
-                                    .driver(neo4jDriver)
-                                    .build())
-                            .chatModel(chatModel)
-                            .build(), processCallback);
+                    ProgressAwareContentRetriever neo4jRetriever = null;
+                    try {
+                        neo4jRetriever = new ProgressAwareContentRetriever(
+                                IntelligentCustomerNeo4jContentRetriever.builder()
+                                        .graph(Neo4jGraph.builder()
+                                                .driver(neo4jDriver)
+                                                .build())
+                                        .chatModel(chatModel)
+                                        .promptTemplate(new PromptTemplate(textToCypherPrompt.getContentAsString(StandardCharsets.UTF_8)))
+                                        .fallbackRetriever(embeddingRetriever)
+                                        .build(), processCallback);
+                    } catch (IOException e) {
+                        log.warn("Error creating Neo4j retriever", e);
+                    }
 
                     // 构建内容聚合（重排序）（带进度回调）
                     ProgressAwareContentAggregator contentAggregator = new ProgressAwareContentAggregator(
