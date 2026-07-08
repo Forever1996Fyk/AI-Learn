@@ -45,7 +45,7 @@ public class CodeGenerator {
                     builder
                             .enableCapitalMode()
                             .enableSkipView()
-                            .addInclude("chat_conversation", "chat_message") // 设置需要生成的表名
+                            .addInclude("car_info", "my_car") // 设置需要生成的表名
                             .controllerBuilder().disable()
                             .mapperBuilder().disableMapperXml()
                             .entityBuilder()

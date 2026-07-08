@@ -325,11 +325,11 @@ public abstract class MinerUFileProcessBaseServiceImpl implements FileProcessSer
         String mdContent = Files.readString(mdFile, StandardCharsets.UTF_8);
 
 //         替换 md中图片地址为 MinIO 地址，并生成图片描述
-//        String processedMdContent = processMarkdownImages(mdContent, imageUrlMap);
+        String processedMdContent = processMarkdownImages(mdContent, imageUrlMap);
 
         // 上传处理后的 md 文件到 MinIO
         String mdObjectName = baseObjectName + mdFile.getFileName().toString();
-        String mdUrl = fileStorageService.uploadFile(mdObjectName, mdContent.getBytes(StandardCharsets.UTF_8), ContentType.TEXT_MARKDOWN);
+        String mdUrl = fileStorageService.uploadFile(mdObjectName, processedMdContent.getBytes(StandardCharsets.UTF_8), ContentType.TEXT_MARKDOWN);
         log.info("Markdown 文件已上传到 MinIO：{}", mdUrl);
         return mdUrl;
     }

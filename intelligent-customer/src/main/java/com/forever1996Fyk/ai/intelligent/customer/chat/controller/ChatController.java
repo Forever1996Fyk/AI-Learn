@@ -1,26 +1,17 @@
 package com.forever1996Fyk.ai.intelligent.customer.chat.controller;
 
 import com.forever1996Fyk.ai.intelligent.customer.ai.model.ChatParam;
-import com.forever1996Fyk.ai.intelligent.customer.ai.model.IntentRecognitionResult;
-import com.forever1996Fyk.ai.intelligent.customer.ai.service.CommonChatService;
-import com.forever1996Fyk.ai.intelligent.customer.ai.service.IntentRecognitionService;
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.TitleSummaryService;
-import com.forever1996Fyk.ai.intelligent.customer.chat.memory.DatabaseChatMemoryStore;
+import com.forever1996Fyk.ai.intelligent.customer.chat.enums.ChatSource;
 import com.forever1996Fyk.ai.intelligent.customer.chat.repository.bean.ChatConversationEntity;
 import com.forever1996Fyk.ai.intelligent.customer.chat.repository.bean.ChatMessageEntity;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatApplicationService;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatConversationService;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatMessageService;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.memory.chat.MessageWindowChatMemory;
-import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.service.AiServices;
 import lombok.extern.slf4j.Slf4j;
-import org.checkerframework.checker.units.qual.C;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -46,36 +37,13 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/chat")
-public class ChatController implements InitializingBean {
-    @Autowired
-    private ChatModel chatModel;
-    @Autowired
-    private CommonChatService commonChatService;
+public class ChatController  {
     @Autowired
     private ChatMessageService chatMessageService;
     @Autowired
     private ChatApplicationService chatApplicationService;
     @Autowired
-    private DatabaseChatMemoryStore databaseChatMemoryStore;
-    @Autowired
     private ChatConversationService chatConversationService;
-
-    private IntentRecognitionService intentRecognitionService;
-
-    @Value("${langchain4j.open-ai.chat-model.api-key}")
-    private String chatModelApiKey;
-
-    @Value("${langchain4j.open-ai.chat-model.base-url}")
-    private String chatModelBaseUrl;
-
-
-    @Override
-    public void afterPropertiesSet() throws Exception {
-        intentRecognitionService = AiServices.builder(IntentRecognitionService.class)
-                .chatModel(chatModel)
-                .chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder().chatMemoryStore(databaseChatMemoryStore).maxMessages(10).build())
-                .build();
-    }
 
     /**
      * 流式对话接口
@@ -94,77 +62,8 @@ public class ChatController implements InitializingBean {
             @RequestParam String content,
             @RequestParam(required = false) String conversationId
     ) {
-        // 1. 处理会话：没有 conversationId 则创建新会话
-        final String finalConversationId;
-        if (!StringUtils.hasText(conversationId)) {
-            // 同步：先用 content 前 20 个字符作为临时标题，快速建立回话
-            String tempTitle = content.substring(0, Math.min(20, content.length()));
-            finalConversationId = chatConversationService.createConversation(userId, tempTitle);
-            log.info("创建新会话：conversationId={}, tempTitle={}", finalConversationId, tempTitle);
-            // 异步：用虚拟线程调用 LLM 生成摘要标题，完成后回写到数据库
-            Thread.ofVirtual().name("title-summary-" + finalConversationId).start(() -> {
-                try {
-                    // 1. 构建轻量级模型实例
-                    OpenAiChatModel titleChatModel = OpenAiChatModel.builder()
-                            .apiKey(chatModelApiKey)
-                            // 轻量级模型，快速响应
-                            .modelName("qwen3.5-flash")
-                            // 适度创造性
-                            .temperature(0.7)
-                            .baseUrl(chatModelBaseUrl)
-                            // 关闭思考链，加速响应
-                            .customQueryParams(Map.of("enable_thinking", "false"))
-                            .build();
-
-                    // 2. 创建 AI Service 代理
-                    TitleSummaryService titleSummaryService = AiServices.builder(TitleSummaryService.class)
-                            .chatModel(titleChatModel)
-                            .build();
-
-                    // 3. 调用 LLM 生成标题
-                    String aiTitle = titleSummaryService.generateTitle(content);
-
-                    // 4. 更新数据库
-                    chatConversationService.updateTitle(finalConversationId, aiTitle);
-                    log.info("异步标题更新完成: conversationId={}, title={}", finalConversationId, aiTitle);
-                } catch (Exception e) {
-                    log.warn("异步标题生成失败, 保留临时标题: conversationId={}", finalConversationId, e);
-                }
-            });
-        } else {
-            finalConversationId = conversationId;
-        }
-
-        // 2. 保存用户信息
-        String messageId = chatMessageService.saveUserMessage(finalConversationId, content);
-        String assistantMessageId = chatMessageService.saveAssistantMessage(finalConversationId);
-
-        // 这里需要再过程输出前面加上类似[PROGRESS]的标签，这样前端才能知道这个输出不是正文而是过程。
-        return Flux.just("[PROGRESS]:正在识别您的意图...")
-                .concatWith(
-                        Mono.fromCallable(() -> intentRecognitionService.chat(finalConversationId, content))
-                                .subscribeOn(Schedulers.boundedElastic())
-                                .flatMapMany(intentRecognitionResult -> {
-                                    // 意图识别完成后清除缓存，避免意图识别的AI响应污染后续RAG对话的历史记忆
-                                    databaseChatMemoryStore.evictCache(finalConversationId);
-                                    // 如果用户问题不相关，使用一个通用的LLM做对话
-                                    if (!intentRecognitionResult.related()) {
-                                        StringBuilder contentBuilder = new StringBuilder();
-                                        return Flux.concat(
-                                                Flux.just("[PROGRESS]:正在为您生成回答..."),
-                                                commonChatService.streamChat(content)
-                                                        .doOnNext(token -> contentBuilder.append(token))
-                                                        .doOnComplete(() -> chatMessageService.updateContent(assistantMessageId, contentBuilder.toString()))
-                                                        .concatWith(Flux.just("[DONE]:" + finalConversationId)));
-                                    }
-
-                                    // 5. 相关问题，走RAG流程（进度由内部组件发出）
-                                    return chatApplicationService.streamChat(new ChatParam(userId, finalConversationId, messageId, content, assistantMessageId, intentRecognitionResult));
-                                })
-                )
-                .doOnError(e -> log.error("流式对话异常：conversationId={}", finalConversationId))
-                // 6. 在流末尾追加一条 [DONE] 事件，携带 conversationId
-                .concatWith(Mono.just("[DONE]:" + finalConversationId));
+        // 从当前上下文获取
+        return chatApplicationService.chat(userId, content, conversationId, ChatSource.USER_WEB);
     }
 
     /**

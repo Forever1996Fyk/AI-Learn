@@ -1,5 +1,7 @@
 package com.forever1996Fyk.ai.intelligent.customer.ai.model;
 
+import com.forever1996Fyk.ai.intelligent.customer.chat.enums.ChatSource;
+
 /**
  * @program: AI-Learn
  * @description:
@@ -12,6 +14,7 @@ public record ChatParam(
         String messageId,
         String content,
         String assistantMessageId,
-        IntentRecognitionResult intentRecognitionResult
+        IntentRecognitionResult intentRecognitionResult,
+        ChatSource chatSource
 ) {
 }
