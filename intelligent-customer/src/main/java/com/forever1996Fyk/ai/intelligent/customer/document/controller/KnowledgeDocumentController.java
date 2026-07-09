@@ -49,8 +49,29 @@ public class KnowledgeDocumentController {
             @RequestParam(value = "tableName", required = false) String tableName,
             @RequestParam("description") String description,
             @RequestParam("knowledgeBaseType") String knowledgeBaseType,
-            @RequestParam(value = "accessibleBy", required = false) String accessibleBy) throws IOException {
-        return documentProcessService.upload(new DocumentUploadParam(file, uploadUser, title, accessibleBy, description, knowledgeBaseType, tableName));
+            @RequestParam(value = "accessibleBy", required = false) String accessibleBy,
+            @RequestParam(value = "version", required = false, defaultValue = "1.0.0") String version) throws IOException {
+        return documentProcessService.upload(new DocumentUploadParam(file, uploadUser, title, accessibleBy, description, knowledgeBaseType, tableName, version));
+    }
+
+    /**
+     * 上传文档新版本
+     *
+     * @param file        新版本文件
+     * @param docId       文档ID（knowledge_document.doc_id）
+     * @param version     新版本号（语义化版本，如 "2.0.0"，必须大于现有最新版本号）
+     * @param changelog   版本变更说明（可选）
+     * @return 更新后的文档记录
+     */
+    @PostMapping("/upload-version")
+    public KnowledgeDocumentEntity uploadVersion(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("docId") Long docId,
+            @RequestParam("version") String version,
+            @RequestParam(value = "changelog", required = false) String changelog) throws IOException {
+//        String uploadUser = authService.getCurrentUser().getName();
+        String uploadUser = "system";
+        return documentProcessService.uploadNewVersion(docId, version, file, uploadUser, changelog);
     }
 
     /**
@@ -86,6 +107,39 @@ public class KnowledgeDocumentController {
         return documentProcessService.embedAndStore(document) ? "success" : "failed";
     }
 
+    /**
+     * 切换文档到指定版本
+     * 清理当前版本的分段和向量，恢复目标版本的文件URL和状态，状态置为 CONVERTED 等待重新切片
+     *
+     * @param docId     文档ID
+     * @param versionId 目标版本ID
+     * @return 更新后的文档记录
+     */
+    @PostMapping("/switch-version")
+    public KnowledgeDocumentEntity switchVersion(@RequestParam("docId") Long docId,
+                                           @RequestParam("versionId") Long versionId) {
+        return documentProcessService.switchVersion(docId, versionId);
+    }
+
+    /**
+     * 让指定版本失效：清理该版本 ES 向量，将分段状态降为 STORED，版本状态降为 CHUNKED
+     *
+     * @param versionId 版本ID（knowledge_document_version.version_id）
+     */
+    @PostMapping("/deactivate-version")
+    public void deactivateVersion(@RequestParam("versionId") Long versionId) {
+        knowledgeDocumentService.deactivateVersion(versionId);
+    }
+
+    /**
+     * 让指定版本生效（重新向量化）：对 STORED 分段重新 embed 写入 ES，版本状态升为 VECTOR_STORED
+     *
+     * @param versionId 版本ID（knowledge_document_version.version_id）
+     */
+    @PostMapping("/activate-version")
+    public void activateVersion(@RequestParam("versionId") Long versionId) {
+        knowledgeDocumentService.activateVersion(versionId);
+    }
 
     /**
      * 获取图片描述

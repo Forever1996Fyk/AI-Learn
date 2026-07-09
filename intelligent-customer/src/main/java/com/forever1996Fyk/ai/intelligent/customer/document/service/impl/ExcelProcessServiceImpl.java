@@ -57,7 +57,7 @@ public class ExcelProcessServiceImpl implements FileProcessService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void processDocument(KnowledgeDocumentEntity document, InputStream inputStream) {
+    public String processDocument(KnowledgeDocumentEntity document, InputStream inputStream) {
         String docTitle = document.getDocTitle();
         String originalTableName = document.getTableName();
         log.info("开始处理 Excel 文件：{}", docTitle);
@@ -123,6 +123,7 @@ public class ExcelProcessServiceImpl implements FileProcessService {
                 }
             }
         }
+        return null;
     }
 
     /**
@@ -291,7 +292,7 @@ public class ExcelProcessServiceImpl implements FileProcessService {
         return sanitized;
     }
 
-    private void dropTable(String tableName) {
+    public void dropTable(String tableName) {
         // 安全检查
         if (!isValidTableName(tableName)) {
             throw new IllegalArgumentException("表名 " + tableName + " 不合法");
@@ -389,6 +390,32 @@ public class ExcelProcessServiceImpl implements FileProcessService {
             return baseType == KnowledgeBaseType.DATA_QUERY;
         }
         return false;
+    }
+
+    /**
+     * 根据逻辑表名生成物理表名
+     * <p>
+     * 同一逻辑表在所有版本中复用同一个物理表名。
+     */
+    public String generatePhysicalTableName(String originalFilename) {
+        String baseName = originalFilename;
+        // 去掉扩展名
+        int dotIndex = baseName.lastIndexOf('.');
+        if (dotIndex > 0) {
+            baseName = baseName.substring(0, dotIndex);
+        }
+        // 清理非法字符
+        baseName = sanitizeTableName(baseName);
+        // 限制 baseName 长度，确保加上前缀后不超过 MySQL 表名上限 64
+        int maxBaseLength = 64 - TABLE_PREFIX.length();
+        if (baseName.length() > maxBaseLength) {
+            baseName = baseName.substring(0, maxBaseLength);
+        }
+        baseName = baseName.replaceAll("_+$", "");
+        if (baseName.isEmpty()) {
+            baseName = "table";
+        }
+        return TABLE_PREFIX + baseName;
     }
 
     /**

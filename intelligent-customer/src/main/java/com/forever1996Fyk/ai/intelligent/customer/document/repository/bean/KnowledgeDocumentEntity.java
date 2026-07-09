@@ -9,8 +9,11 @@ import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.annotation.Version;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.forever1996Fyk.ai.intelligent.customer.document.entity.DocumentUploadParam;
 import com.forever1996Fyk.ai.intelligent.customer.document.enums.DocumentStatus;
 import com.forever1996Fyk.ai.intelligent.customer.document.enums.KnowledgeBaseType;
+import com.forever1996Fyk.ai.intelligent.customer.document.util.DocumentPermissionUtils;
+import com.forever1996Fyk.ai.intelligent.customer.rag.constant.RoleEnum;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
@@ -116,6 +119,11 @@ public class KnowledgeDocumentEntity {
     @TableLogic
     private Integer deleted;
 
+    /**
+     * 当前激活版本ID，指向 knowledge_document_version.version_id
+     */
+    private Long currentVersionId;
+
     @JsonIgnore
     public Boolean isOverride() {
         if (extension != null && !extension.isEmpty()) {
@@ -143,5 +151,15 @@ public class KnowledgeDocumentEntity {
         }
         extensionMap.put("tableName", tableName);
         this.extension = JSON.toJSONString(extensionMap);
+    }
+
+    public KnowledgeDocumentEntity create(DocumentUploadParam documentUploadParam) {
+        this.setDocTitle(documentUploadParam.title());
+        this.setStatus(DocumentStatus.UPLOADED);
+        this.setDescription(documentUploadParam.description());
+        this.setKnowledgeBaseType(KnowledgeBaseType.valueOf(documentUploadParam.knowledgeBaseType()));
+        this.setTableName(documentUploadParam.tableName());
+        this.setAccessibleBy(DocumentPermissionUtils.getDocumentPermission(RoleEnum.valueOf(documentUploadParam.accessibleBy())));
+        return this;
     }
 }

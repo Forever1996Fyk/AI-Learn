@@ -16,13 +16,19 @@ public class DocumentChunkedEvent extends ApplicationEvent {
     private final Long documentId;
 
     /**
+     * 文档的版本号
+     */
+    private final Long documentVersionId;
+
+    /**
      * 分段数量
      */
     private final int segmentCount;
 
-    public DocumentChunkedEvent(Object source, Long documentId, int segmentCount) {
+    public DocumentChunkedEvent(Object source, Long documentId, Long documentVersionId, int segmentCount) {
         super(source);
         this.documentId = documentId;
+        this.documentVersionId = documentVersionId;
         this.segmentCount = segmentCount;
     }
 
@@ -32,6 +38,10 @@ public class DocumentChunkedEvent extends ApplicationEvent {
 
     public int getSegmentCount() {
         return segmentCount;
+    }
+
+    public Long getDocumentVersionId() {
+        return documentVersionId;
     }
 
     @Override

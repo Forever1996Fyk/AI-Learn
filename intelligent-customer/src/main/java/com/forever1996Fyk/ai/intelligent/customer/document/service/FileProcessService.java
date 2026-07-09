@@ -25,7 +25,7 @@ public interface FileProcessService {
      * @param document    the document entity
      * @param inputStream the input stream of the document
      */
-    void processDocument(KnowledgeDocumentEntity document, InputStream inputStream);
+    String processDocument(KnowledgeDocumentEntity document, InputStream inputStream);
 
 
     /**

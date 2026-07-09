@@ -9,5 +9,5 @@ import org.springframework.web.multipart.MultipartFile;
  * @create: 2026/6/3 11:02
  **/
 public record DocumentUploadParam(MultipartFile file, String uploadUser, String title, String accessibleBy,
-                                  String description, String knowledgeBaseType, String tableName) {
+                                  String description, String knowledgeBaseType, String tableName, String version) {
 }

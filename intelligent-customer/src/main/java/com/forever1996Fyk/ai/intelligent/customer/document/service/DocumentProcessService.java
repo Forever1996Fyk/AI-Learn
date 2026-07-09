@@ -3,6 +3,8 @@ package com.forever1996Fyk.ai.intelligent.customer.document.service;
 import com.forever1996Fyk.ai.intelligent.customer.document.entity.DocumentSplitParam;
 import com.forever1996Fyk.ai.intelligent.customer.document.entity.DocumentUploadParam;
 import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.KnowledgeDocumentEntity;
+import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.KnowledgeDocumentVersionEntity;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 
@@ -39,4 +41,33 @@ public interface DocumentProcessService {
      * @return 嵌入结果
      */
     boolean embedAndStore(KnowledgeDocumentEntity document);
+
+    /**
+     * 上传新版本
+     *
+     * @param docId       文档ID
+     * @param version     版本号
+     * @param file        文件
+     * @param uploadUser  上传用户
+     * @param changelog   变更说明
+     * @return 新版本知识文档实体
+     */
+    KnowledgeDocumentEntity uploadNewVersion(Long docId, String version, MultipartFile file, String uploadUser, String changelog) throws IOException;
+
+    /**
+     * 嵌入新版本并存储
+     *
+     * @param documentVersion 知识文档版本实体
+     * @return 嵌入结果
+     */
+    boolean embedAndStore(KnowledgeDocumentVersionEntity documentVersion);
+
+    /**
+     * 切换版本
+     *
+     * @param docId     文档ID
+     * @param versionId 版本ID
+     * @return 切换后的知识文档实体
+     */
+    KnowledgeDocumentEntity switchVersion(Long docId, Long versionId);
 }

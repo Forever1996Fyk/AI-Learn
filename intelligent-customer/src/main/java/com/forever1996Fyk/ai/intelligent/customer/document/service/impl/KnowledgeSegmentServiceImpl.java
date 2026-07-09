@@ -48,4 +48,9 @@ public class KnowledgeSegmentServiceImpl extends ServiceImpl<KnowledgeSegmentMap
 
         return null;
     }
+
+    @Override
+    public void physicalDeleteByDocId(Long docId) {
+        baseMapper.physicalDeleteByDocId(docId);
+    }
 }

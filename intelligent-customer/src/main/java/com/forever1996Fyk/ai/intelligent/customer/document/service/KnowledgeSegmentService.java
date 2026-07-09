@@ -20,4 +20,11 @@ public interface KnowledgeSegmentService extends IService<KnowledgeSegmentEntity
      * @return 文本
      */
     String getTextByChunkId(String parentChunkId);
+
+    /**
+     * 按 docId 物理删除该文档下的所有分段
+     *
+     * @param docId 文档ID
+     */
+    void physicalDeleteByDocId(Long docId);
 }

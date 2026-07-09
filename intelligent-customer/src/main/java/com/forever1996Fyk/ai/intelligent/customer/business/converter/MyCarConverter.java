@@ -1,6 +1,6 @@
 package com.forever1996Fyk.ai.intelligent.customer.business.converter;
 import com.forever1996Fyk.ai.intelligent.customer.business.vo.MyCarVO;
-import com.forever1996Fyk.ai.intelligent.customer.chat.repository.bean.MyCarEntity;
+import com.forever1996Fyk.ai.intelligent.customer.business.repository.bean.MyCarEntity;
 import org.mapstruct.Mapper;
 import org.mapstruct.MappingConstants;
 import org.mapstruct.factory.Mappers;

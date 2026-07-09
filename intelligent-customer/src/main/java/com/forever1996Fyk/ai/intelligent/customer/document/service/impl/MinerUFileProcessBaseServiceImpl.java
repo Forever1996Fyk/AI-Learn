@@ -79,8 +79,8 @@ public abstract class MinerUFileProcessBaseServiceImpl implements FileProcessSer
      * @param inputStream the input stream of the document
      */
     @Override
-    public void processDocument(KnowledgeDocumentEntity document, InputStream inputStream) {
-        processDocumentToMarkdownFromZip(document, inputStream);
+    public String processDocument(KnowledgeDocumentEntity document, InputStream inputStream) {
+        return processDocumentToMarkdownFromZip(document, inputStream);
     }
 
     /**
@@ -186,7 +186,7 @@ public abstract class MinerUFileProcessBaseServiceImpl implements FileProcessSer
      * @param document    KnowledgeDocumentEntity
      * @param inputStream InputStream
      */
-    public void processDocumentToMarkdownFromZip(KnowledgeDocumentEntity document, InputStream inputStream) {
+    public String processDocumentToMarkdownFromZip(KnowledgeDocumentEntity document, InputStream inputStream) {
         log.info("开始处理文档转换为 ZIP，documentId: {}, docTitle: {}", document.getDocId(), document.getDocTitle());
 
         // 更新状态为转换中
@@ -225,6 +225,7 @@ public abstract class MinerUFileProcessBaseServiceImpl implements FileProcessSer
             Assert.isTrue(result, "更新文档状态CONVERTED失败");
 
             log.info("文档 ZIP 转换完成，documentId:{}, mdurl:{}", document.getDocId(), mdMinIOUrl);
+            return mdMinIOUrl;
         } catch (Exception e) {
             log.error("文档 ZIP 转换失败，documentId:{}", document.getDocId(), e);
             document.setStatus(DocumentStatus.UPLOADED);

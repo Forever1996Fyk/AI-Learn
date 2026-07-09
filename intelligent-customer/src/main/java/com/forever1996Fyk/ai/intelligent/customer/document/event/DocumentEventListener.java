@@ -1,8 +1,10 @@
 package com.forever1996Fyk.ai.intelligent.customer.document.event;
 
 import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.KnowledgeDocumentEntity;
+import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.KnowledgeDocumentVersionEntity;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.DocumentProcessService;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.KnowledgeDocumentService;
+import com.forever1996Fyk.ai.intelligent.customer.document.service.KnowledgeDocumentVersionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
@@ -23,6 +25,8 @@ public class DocumentEventListener {
     private DocumentProcessService documentProcessService;
     @Autowired
     private KnowledgeDocumentService knowledgeDocumentService;
+    @Autowired
+    private KnowledgeDocumentVersionService knowledgeDocumentVersionService;
 
     /**
      * 文档分块事件监听
@@ -36,8 +40,8 @@ public class DocumentEventListener {
         Long documentId = event.getDocumentId();
         log.info("文档 CHUNKED 事件触发，开始执行向量嵌入，documentId: {}，segmentCount: {}", documentId, event.getSegmentCount());
         try {
-            KnowledgeDocumentEntity document = knowledgeDocumentService.getById(documentId);
-            boolean result = documentProcessService.embedAndStore(document);
+            KnowledgeDocumentVersionEntity documentVersion = knowledgeDocumentVersionService.getById(event.getDocumentVersionId());
+            boolean result = documentProcessService.embedAndStore(documentVersion);
             log.info("文档向量嵌入结果，documentId: {}，result: {}", documentId, result);
         } catch (Exception e) {
             log.error("文档向量嵌入失败，documentId: {}", documentId, e);

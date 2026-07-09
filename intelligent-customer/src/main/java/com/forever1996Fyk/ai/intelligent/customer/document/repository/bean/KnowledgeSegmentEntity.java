@@ -59,6 +59,11 @@ public class KnowledgeSegmentEntity {
     private Long documentId;
 
     /**
+     * 所属文档版本ID（指向 knowledge_document_version.version_id）
+     */
+    private Long documentVersion;
+
+    /**
      * 顺序
      */
     private Integer chunkOrder;
