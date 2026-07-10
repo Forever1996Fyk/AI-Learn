@@ -1,9 +1,11 @@
 package com.forever1996Fyk.ai.intelligent.customer.rag.modules.retriever;
 
+import co.elastic.clients.elasticsearch.core.SearchResponse;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.KnowledgeSegmentService;
 import com.forever1996Fyk.ai.intelligent.customer.rag.constant.MetadataKeyConstant;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -15,23 +17,34 @@ import dev.langchain4j.rag.query.Query;
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.elasticsearch.AbstractElasticsearchEmbeddingStore;
+import dev.langchain4j.store.embedding.elasticsearch.Document;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchConfiguration;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchConfigurationFullText;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchConfigurationHybrid;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchConfigurationKnn;
 import dev.langchain4j.store.embedding.filter.Filter;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
+import dev.langchain4j.store.embedding.filter.comparison.IsEqualTo;
+import dev.langchain4j.store.embedding.filter.logical.Or;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.poi.ss.formula.functions.T;
 import org.elasticsearch.client.RestClient;
+import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.util.StringUtils;
 
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import static java.util.stream.Collectors.toList;
 
 /**
  * @program: AI-Learn
@@ -76,6 +89,20 @@ public class IntelligentCustomerElasticsearchContentRetriever extends AbstractEl
         this.initialize(configuration, restClient, indexName);
     }
 
+    private List<TextSegment> toTextList(SearchResponse<Document> response) {
+        return response.hits().hits().stream()
+                .map(hit -> Optional.ofNullable(hit.source())
+                        .map(document -> document.getText() == null
+                                ? null
+                                : TextSegment.from(
+                                document.getText(),
+                                new Metadata(document.getMetadata())
+                                .put(ContentMetadata.SCORE.name(), hit.score())
+                                .put(ContentMetadata.EMBEDDING_ID.name(), hit.id())))
+                        .orElse(null))
+                .collect(toList());
+    }
+
     /**
      * 根据查询条件检索相关内容
      * 整体参考了 {@link ElasticsearchContentRetriever}, 这里的自定义ContentRetriever 主要是为了实现父子分段和兄弟分段查询
@@ -111,15 +138,7 @@ public class IntelligentCustomerElasticsearchContentRetriever extends AbstractEl
         if (configuration instanceof ElasticsearchConfigurationFullText) {
             // 全文检索模式：直接执行全文检索并返回结果
             log.debug("Using a full text search query");
-
-            searchContents = this.fullTextSearch(query.text()).stream()
-                    .map(t -> Content.from(
-                            t,
-                            Map.of(
-                                    ContentMetadata.SCORE, Objects.requireNonNull(t.metadata().getDouble(ContentMetadata.SCORE.name())),
-                                    ContentMetadata.EMBEDDING_ID, Objects.requireNonNull(t.metadata().getString(ContentMetadata.EMBEDDING_ID.name()))
-                            )
-                    )).toList();
+            searchContents = doFullTextQuery(query);
         } else if (configuration instanceof ElasticsearchConfigurationHybrid) {
             // 混合检索模式：结合向量检索和全文检索 （只有企业版ES支持）
             searchContents = mapResultsToContentList(this.hybridSearch(request, query.text()));
@@ -127,6 +146,11 @@ public class IntelligentCustomerElasticsearchContentRetriever extends AbstractEl
             searchContents = mapResultsToContentList(this.search(request));
         }
 
+        return processParentAndBrotherContent(searchContents);
+    }
+
+    private @NonNull List<Content> processParentAndBrotherContent(List<Content> searchContents) {
+        EmbeddingSearchRequest request;
         // 去重并按文本内容排序
         searchContents = searchContents.stream().distinct().sorted(Comparator.comparing(content -> content.textSegment().text())).toList();
 
@@ -180,7 +204,93 @@ public class IntelligentCustomerElasticsearchContentRetriever extends AbstractEl
                 }
             }
         }
-        return searchContents;
+
+        finalContents = finalContents.stream().sorted(new Comparator<Content>() {
+            @Override
+            public int compare(Content content1, Content content2) {
+                return Double.compare((double) content2.metadata().get(ContentMetadata.SCORE), (double) content1.metadata().get(ContentMetadata.SCORE));
+            }
+        }).collect(Collectors.toList());
+        return finalContents;
+    }
+
+    /**
+     * 执行全文检索查询。默认的全文搜索不支持filter，所以需要定制
+     * <p>
+     * 根据权限过滤条件决定查询策略：
+     * <ul>
+     *   <li>无权限过滤（accessibleValues 为空）：使用简单的 match 查询，仅对 text 字段进行全文匹配</li>
+     *   <li>有权限过滤（accessibleValues 非空）：使用 bool 查询，
+     *       must 子句对 text 字段全文匹配，filter 子句通过 terms 查询限定 metadata.accessibleBy 字段，
+     *       确保只返回当前用户有权访问的文档</li>
+     * </ul>
+     * 查询结果转换为 Content 列表，携带 SCORE 和 EMBEDDING_ID 元数据。
+     *
+     * @param query 查询对象，包含检索文本
+     * @return 带元数据的 Content 列表
+     */
+    @NotNull
+    private List<Content> doFullTextQuery(Query query) {
+        try {
+            // 从 Filter 树中提取所有 IsEqualTo 的 value，用于权限过滤
+            List<String> accessibleValues = extractFilterValues(filter);
+
+            SearchResponse<Document> response = client.search(
+                    s -> s.index(indexName)
+                            .query(q -> accessibleValues.isEmpty()
+                                    // 无权限过滤：简单 match 查询
+                                    ? q.match(m -> m.field("text").query(query.text()))
+                                    // 有权限过滤：bool 查询 = must(全文匹配) + filter(权限过滤)
+                                    : q.bool(b -> b
+                                                  .must(m -> m.match(mm -> mm.field("text").query(query.text())))
+                                                  .filter(f -> f.terms(t -> t
+                                                                            .field("metadata.accessibleBy")
+                                                                            .terms(tv -> tv.value(accessibleValues.stream()
+                                                                                                  .map(co.elastic.clients.elasticsearch._types.FieldValue::of)
+                                                                                                  .toList())))))),
+                    Document.class);
+
+            // 将 ES 响应转换为 TextSegment 列表
+            List<TextSegment> results = toTextList(response);
+            // 将 TextSegment 转换为 Content，携带 SCORE 和 EMBEDDING_ID 元数据
+            return results.stream()
+                    .map(t -> Content.from(
+                            t,
+                            Map.of(
+                                    ContentMetadata.SCORE, t.metadata().getDouble(ContentMetadata.SCORE.name()),
+                                    ContentMetadata.EMBEDDING_ID,
+                                    t.metadata().getString(ContentMetadata.EMBEDDING_ID.name()))))
+                    .toList();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    /**
+     * 递归遍历 langchain4j Filter 树，提取所有 IsEqualTo 的 value 字符串列表。
+     * <p>
+     * 支持 Or(IsEqualTo, ...) 结构，适配权限过滤场景。
+     */
+    private List<String> extractFilterValues(Filter filter) {
+        List<String> values = new ArrayList<>();
+        collectFilterValues(filter, values);
+        return values;
+    }
+
+    private void collectFilterValues(Filter filter, List<String> values) {
+        if (filter == null) {
+            return;
+        }
+        if (filter instanceof IsEqualTo isEqualTo) {
+            Object value = isEqualTo.comparisonValue();
+            if (value != null) {
+                values.add(value.toString());
+            }
+        } else if (filter instanceof Or or) {
+            collectFilterValues(or.left(), values);
+            collectFilterValues(or.right(), values);
+        }
     }
 
     private List<Content> mapResultsToContentList(EmbeddingSearchResult<TextSegment> searchResult) {

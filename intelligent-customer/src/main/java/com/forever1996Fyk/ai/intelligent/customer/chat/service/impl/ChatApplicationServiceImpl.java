@@ -23,7 +23,10 @@ import com.forever1996Fyk.ai.intelligent.customer.business.service.MyCarService;
 import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.TableMetaEntity;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.KnowledgeSegmentService;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.TableMetaService;
+import com.forever1996Fyk.ai.intelligent.customer.document.util.DocumentPermissionUtils;
 import com.forever1996Fyk.ai.intelligent.customer.rag.config.ElasticSearchConfiguration;
+import com.forever1996Fyk.ai.intelligent.customer.rag.constant.MetadataKeyConstant;
+import com.forever1996Fyk.ai.intelligent.customer.rag.constant.RoleEnum;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.aggregator.ProgressAwareContentAggregator;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.reranker.BgeScoringModel;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.retriever.IntelligentCustomerElasticsearchContentRetriever;
@@ -52,6 +55,8 @@ import dev.langchain4j.rag.query.transformer.QueryTransformer;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchConfigurationFullText;
 import dev.langchain4j.store.embedding.elasticsearch.ElasticsearchConfigurationKnn;
+import dev.langchain4j.store.embedding.filter.Filter;
+import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import dev.langchain4j.store.memory.chat.InMemoryChatMemoryStore;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -271,6 +276,8 @@ public class ChatApplicationServiceImpl implements ChatApplicationService, Initi
                     // 构建问题重写（带进度回调）
                     QueryTransformer queryTransformer = new IntelligentCustomerQueryTransformer(chatModel, chatParam.messageId(), processCallback);
 
+                    Filter accessibleByFilter = buildFilter(chatParam);
+
                     // 构建向量检索（带进度回调）
                     ProgressAwareContentRetriever embeddingRetriever = new ProgressAwareContentRetriever(IntelligentCustomerElasticsearchContentRetriever.builder()
                             .configuration(ElasticsearchConfigurationKnn.builder().build())
@@ -280,6 +287,7 @@ public class ChatApplicationServiceImpl implements ChatApplicationService, Initi
                             .restClient(restClient)
                             .indexName(ElasticSearchConfiguration.INDEX_NAME)
                             .knowledgeSegmentService(knowledgeSegmentService)
+                            .filter(accessibleByFilter)
                             .build(), processCallback);
 
                     // 构建全文检索（带进度回调）
@@ -291,6 +299,7 @@ public class ChatApplicationServiceImpl implements ChatApplicationService, Initi
                             .restClient(restClient)
                             .indexName(ElasticSearchConfiguration.INDEX_NAME)
                             .knowledgeSegmentService(knowledgeSegmentService)
+                            .filter(accessibleByFilter)
                             .build(), processCallback);
 
                     ProgressAwareContentRetriever sqlRetriever = null;
@@ -379,6 +388,30 @@ public class ChatApplicationServiceImpl implements ChatApplicationService, Initi
                     sink.onCancel(disposable::dispose);
                 }).subscribeOn(Schedulers.boundedElastic())
                 .publishOn(Schedulers.parallel());
+    }
+
+    /**
+     * 构建权限过滤器
+     *
+     * @param chatParam 聊天参数
+     * @return 过滤器
+     */
+    private Filter buildFilter(ChatParam chatParam) {
+        // 默认权限过滤器：允许访客权限
+        Filter permissionFilter = MetadataFilterBuilder.metadataKey(MetadataKeyConstant.ACCESSIBLE_BY).isEqualTo(RoleEnum.VISITOR.name());
+
+        // 根据用户角色获取权限 todo
+        RoleEnum roleEnum = null;
+
+        // 获取该文档支持的所有权限
+        String[] permissions = DocumentPermissionUtils.getDocumentAccessiblePermission(roleEnum);
+        for (String permission : permissions) {
+            // 非访客权限时，将权限用 or 连接，表示支持多种权限
+            if (!RoleEnum.VISITOR.name().equals(permission)) {
+                permissionFilter = permissionFilter.or(MetadataFilterBuilder.metadataKey(MetadataKeyConstant.ACCESSIBLE_BY).isEqualTo(permission));
+            }
+        }
+        return permissionFilter;
     }
 
     /**
