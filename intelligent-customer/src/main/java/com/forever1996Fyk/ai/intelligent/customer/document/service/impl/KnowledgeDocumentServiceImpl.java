@@ -19,6 +19,7 @@ import com.forever1996Fyk.ai.intelligent.customer.document.service.KnowledgeDocu
 import com.forever1996Fyk.ai.intelligent.customer.document.service.KnowledgeSegmentService;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.VectorStoreService;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -199,6 +200,36 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
         boolean versionUpdateResult = knowledgeDocumentVersionService.updateById(documentVersion);
         Assert.isTrue(versionUpdateResult, "文档版本状态更新失败");
         log.info("版本失效完成, versionId={}", versionId);
+    }
+
+    @Override
+    public boolean removeDocumentsWithSegments(List<Long> docIds) {
+        if (CollectionUtils.isEmpty(docIds)) {
+            return false;
+        }
+        // 按 metadata 中的 docId 批量删除所有向量
+        deleteVectorsByDocIds(docIds);
+
+        // 物理删除这些文档下的所有分段
+        knowledgeSegmentService.physicalDeleteByDocIds(docIds);
+
+        // 删除这些文档对应的 DATA_QUERY 动态物理表
+        for (Long docId : docIds) {
+            dropDataQueryTableIfExists(docId);
+        }
+
+        // 物理删除这些文档的所有版本记录
+        knowledgeDocumentVersionService.physicalDeleteByDocIds(docIds);
+
+        // 物理删除文档本身
+        return baseMapper.physicalDeleteByDocIds(docIds) > 0;
+    }
+
+    /**
+     * 按 metadata 中的 docId 批量删除向量
+     */
+    private void deleteVectorsByDocIds(List<Long> docIds) {
+        vectorStoreService.removeByDocIds(docIds);
     }
 
     /**

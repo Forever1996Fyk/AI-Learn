@@ -2,6 +2,7 @@ package com.forever1996Fyk.ai.intelligent.customer.chat.controller;
 
 import com.forever1996Fyk.ai.intelligent.customer.ai.model.ChatParam;
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.TitleSummaryService;
+import com.forever1996Fyk.ai.intelligent.customer.auth.service.AuthService;
 import com.forever1996Fyk.ai.intelligent.customer.chat.enums.ChatSource;
 import com.forever1996Fyk.ai.intelligent.customer.chat.repository.bean.ChatConversationEntity;
 import com.forever1996Fyk.ai.intelligent.customer.chat.repository.bean.ChatMessageEntity;
@@ -39,6 +40,8 @@ import java.util.Map;
 @RequestMapping("/chat")
 public class ChatController  {
     @Autowired
+    private AuthService authService;
+    @Autowired
     private ChatMessageService chatMessageService;
     @Autowired
     private ChatApplicationService chatApplicationService;
@@ -52,17 +55,16 @@ public class ChatController  {
      * 返回：SSE 流，每个 token 逐字推送；流结束前推送一条 [DONE] 事件携带 conversationId
      * <p>
      *
-     * @param userId         用户ID
      * @param content        用户问题
      * @param conversationId 会话ID（可选，不传则自动创建新会话）
      */
     @PostMapping(value = "/send", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> send(
-            @RequestParam String userId,
             @RequestParam String content,
             @RequestParam(required = false) String conversationId
     ) {
         // 从当前上下文获取
+        String userId = authService.getCurrentUserId();
         return chatApplicationService.chat(userId, content, conversationId, ChatSource.USER_WEB);
     }
 
@@ -72,7 +74,8 @@ public class ChatController  {
      * @param userId 用户ID
      */
     @GetMapping("/list")
-    public List<ChatConversationEntity> listConversations(@RequestParam String userId) {
+    public List<ChatConversationEntity> listConversations() {
+        String userId = authService.getCurrentUserId();
         return chatConversationService.getConversationsByUserId(userId);
     }
 

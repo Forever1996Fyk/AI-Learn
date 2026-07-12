@@ -1,5 +1,6 @@
 package com.forever1996Fyk.ai.intelligent.customer.chat.controller;
 
+import com.forever1996Fyk.ai.intelligent.customer.auth.service.AuthService;
 import com.forever1996Fyk.ai.intelligent.customer.chat.repository.bean.ChatConversationEntity;
 import com.forever1996Fyk.ai.intelligent.customer.chat.service.ChatConversationService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,16 +26,18 @@ import java.util.Map;
 @RequestMapping("/chat/conversation")
 public class ChatConversationController {
     @Autowired
+    private AuthService authService;
+    @Autowired
     private ChatConversationService chatConversationService;
 
     /**
      * 获取用户的会话列表
      *
-     * @param userId 用户ID
      * @return 会话列表
      */
     @GetMapping("/list")
-    public Map<String, Object> getConversationList(@RequestParam String userId) {
+    public Map<String, Object> getConversationList() {
+        String userId = authService.getCurrentUserId();
         List<ChatConversationEntity> conversations = chatConversationService.getConversationsByUserId(userId);
 
         Map<String, Object> result = new HashMap<>();
@@ -74,8 +77,8 @@ public class ChatConversationController {
      * @return 会话ID
      */
     @PostMapping("/create")
-    public Map<String, Object> createConversation(@RequestParam String userId,
-                                                  @RequestParam(required = false) String title) {
+    public Map<String, Object> createConversation(@RequestParam(required = false) String title) {
+        String userId = authService.getCurrentUserId();
         String conversationId = chatConversationService.createConversation(userId, title);
 
         Map<String, Object> result = new HashMap<>();

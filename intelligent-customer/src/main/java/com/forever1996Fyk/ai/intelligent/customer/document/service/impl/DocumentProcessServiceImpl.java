@@ -193,7 +193,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
         }
 
         // 2.从 MinIO下载文件内容
-        String convertedDocUrl = document.getConvertedDocUrl();
+        String convertedDocUrl = versionRecord.getConvertedDocUrl();
         String objectName = extractObjectNameFromUrl(convertedDocUrl);
         Assert.notNull(objectName, "无法解析文档 URL");
 
@@ -201,8 +201,8 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
         List<TextSegment> segments;
         try (InputStream inputStream = fileStorageService.downloadFile(objectName)) {
             //EXCEL单独处理，因为他不是Document类型
-            if (FileType.EXCEL == FileTypeUtils.getFileType(document.getConvertedDocUrl())
-                    || FileType.CSV == FileTypeUtils.getFileType(document.getConvertedDocUrl())
+            if (FileType.EXCEL == FileTypeUtils.getFileType(versionRecord.getConvertedDocUrl())
+                    || FileType.CSV == FileTypeUtils.getFileType(versionRecord.getConvertedDocUrl())
             ) {
                 ExcelSplitter excelSplitter = new ExcelSplitter(documentSplitParam.chunkSize(), false);
                 segments = excelSplitter.split(inputStream.readAllBytes());
@@ -224,6 +224,7 @@ public class DocumentProcessServiceImpl implements DocumentProcessService {
             Metadata metadata = segment.metadata();
             knowledgeSegment.setMetadata(enrichMetadata(document, versionRecord, metadata));
             knowledgeSegment.setDocumentId(document.getDocId());
+            knowledgeSegment.setDocumentVersion(document.getCurrentVersionId());
             knowledgeSegment.setChunkOrder(i);
 
             // 检查是否需要跳过嵌入

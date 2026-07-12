@@ -5,6 +5,8 @@ import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.Knowl
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
+
 /**
  * <p>
  * 知识文档表 Mapper 接口
@@ -19,4 +21,8 @@ public interface KnowledgeDocumentMapper extends BaseMapper<KnowledgeDocumentEnt
     @Delete("DELETE FROM knowledge_document WHERE doc_id = #{docId}")
     int physicalDeleteByDocId(@Param("docId") Long docId);
 
+    /** 按主键列表批量物理删除文档 */
+    @Delete("<script>DELETE FROM knowledge_document WHERE doc_id IN " +
+            "<foreach item='docId' collection='docIds' open='(' separator=',' close=')'>#{docId}</foreach></script>")
+    int physicalDeleteByDocIds(List<Long> docIds);
 }

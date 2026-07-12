@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.forever1996Fyk.ai.intelligent.customer.document.constant.ContentType;
 import com.forever1996Fyk.ai.intelligent.customer.document.enums.DocumentStatus;
 import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.KnowledgeDocumentEntity;
+import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.KnowledgeDocumentVersionEntity;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.FileProcessService;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.FileStorageService;
 import com.forever1996Fyk.ai.intelligent.customer.document.service.KnowledgeDocumentService;
@@ -111,10 +112,8 @@ public abstract class MinerUFileProcessBaseServiceImpl implements FileProcessSer
             String convertedUrl = fileStorageService.uploadFile(convertedObjectName, markdownContent.getBytes(), ContentType.TEXT_MARKDOWN);
 
             // 更新文档状态为已转换
-            document.setStatus(DocumentStatus.CONVERTED);
-            document.setConvertedDocUrl(convertedUrl);
-            result = knowledgeDocumentService.updateById(document);
-            Assert.isTrue(result, "更新文档状态CONVERTED失败");
+            knowledgeDocumentService.advanceDocumentAndVersionStatus(document.getDocId(), document.getCurrentVersionId(), DocumentStatus.CONVERTED);
+
             log.info("文档 Markdown 转换完成，documentId:{}, docTitle:{}", document.getDocId(), document.getDocTitle());
         } catch (Exception e) {
             log.error("文档 Markdown 转换失败，documentId:{}, docTitle:{}", document.getDocId(), document.getDocTitle(), e);
@@ -218,11 +217,8 @@ public abstract class MinerUFileProcessBaseServiceImpl implements FileProcessSer
             // 4. 上传解压后的 md 和图片到 MinIO，并处理 md 内容
             String mdMinIOUrl = processExtractedFiles(document, extractDir);
 
-            // 5. 更新文档状态为已转换，保存 md 的 MinIO 地址
-            document.setStatus(DocumentStatus.CONVERTED);
-            document.setConvertedDocUrl(mdMinIOUrl);
-            result = knowledgeDocumentService.updateById(document);
-            Assert.isTrue(result, "更新文档状态CONVERTED失败");
+            // 5. 更新文档状态为已转换
+            knowledgeDocumentService.advanceDocumentAndVersionStatus(document.getDocId(), document.getCurrentVersionId(), DocumentStatus.CONVERTED);
 
             log.info("文档 ZIP 转换完成，documentId:{}, mdurl:{}", document.getDocId(), mdMinIOUrl);
             return mdMinIOUrl;

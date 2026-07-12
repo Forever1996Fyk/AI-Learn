@@ -3,6 +3,8 @@ package com.forever1996Fyk.ai.intelligent.customer.document.service;
 import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.KnowledgeSegmentEntity;
 import com.baomidou.mybatisplus.extension.service.IService;
 
+import java.util.List;
+
 /**
  * <p>
  * 知识片段表 服务类
@@ -27,4 +29,19 @@ public interface KnowledgeSegmentService extends IService<KnowledgeSegmentEntity
      * @param docId 文档ID
      */
     void physicalDeleteByDocId(Long docId);
+
+    /**
+     * 按 docIds 物理删除该文档下的所有分段
+     *
+     * @param docIds 文档ID
+     */
+    void physicalDeleteByDocIds(List<Long> docIds);
+
+    /**
+     * 根据ID更新分段信息
+     * @param entity
+     * @param updateVectorStore
+     * @return
+     */
+    boolean updateById(KnowledgeSegmentEntity entity, boolean updateVectorStore);
 }

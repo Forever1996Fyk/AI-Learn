@@ -49,25 +49,25 @@ public class KnowledgeDocumentEntity {
      */
     private String docTitle;
 
-    /**
-     * 上传用户
-     */
-    private String uploadUser;
+//    /**
+//     * 上传用户
+//     */
+//    private String uploadUser;
 
-    /**
-     * 文档URL
-     */
-    private String docUrl;
+//    /**
+//     * 文档URL
+//     */
+//    private String docUrl;
+//
+//    /**
+//     * 转换后的文档URL
+//     */
+//    private String convertedDocUrl;
 
-    /**
-     * 转换后的文档URL
-     */
-    private String convertedDocUrl;
-
-    /**
-     * 文档失效日期
-     */
-    private Date expireDate;
+//    /**
+//     * 文档失效日期
+//     */
+//    private Date expireDate;
 
     /**
      * 状态：INIT, UPLOADED, CONVERTING, CONVERTED, CHUNKED, VECTOR_STORED

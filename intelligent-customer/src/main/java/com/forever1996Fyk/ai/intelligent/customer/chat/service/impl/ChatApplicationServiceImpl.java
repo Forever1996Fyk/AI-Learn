@@ -11,6 +11,7 @@ import com.forever1996Fyk.ai.intelligent.customer.ai.service.TitleSummaryService
 import com.forever1996Fyk.ai.intelligent.customer.ai.service.prompt.PromptService;
 import com.forever1996Fyk.ai.intelligent.customer.business.converter.CarInfoConverter;
 import com.forever1996Fyk.ai.intelligent.customer.business.converter.MyCarConverter;
+import com.forever1996Fyk.ai.intelligent.customer.business.service.UserRoleService;
 import com.forever1996Fyk.ai.intelligent.customer.chat.enums.ChatSource;
 import com.forever1996Fyk.ai.intelligent.customer.chat.memory.DatabaseChatMemoryStore;
 import com.forever1996Fyk.ai.intelligent.customer.business.repository.bean.CarInfoEntity;
@@ -27,6 +28,7 @@ import com.forever1996Fyk.ai.intelligent.customer.document.util.DocumentPermissi
 import com.forever1996Fyk.ai.intelligent.customer.rag.config.ElasticSearchConfiguration;
 import com.forever1996Fyk.ai.intelligent.customer.rag.constant.MetadataKeyConstant;
 import com.forever1996Fyk.ai.intelligent.customer.rag.constant.RoleEnum;
+import com.forever1996Fyk.ai.intelligent.customer.rag.modules.aggregator.IntelligentCustomerHybridContentAggregator;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.aggregator.ProgressAwareContentAggregator;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.reranker.BgeScoringModel;
 import com.forever1996Fyk.ai.intelligent.customer.rag.modules.retriever.IntelligentCustomerElasticsearchContentRetriever;
@@ -119,6 +121,8 @@ public class ChatApplicationServiceImpl implements ChatApplicationService, Initi
 
     @Autowired
     private MyCarService myCarService;
+    @Autowired
+    private UserRoleService userRoleService;
     @Autowired
     private CarInfoService carInfoService;
     @Autowired
@@ -336,9 +340,14 @@ public class ChatApplicationServiceImpl implements ChatApplicationService, Initi
 
                     // 构建内容聚合（重排序）（带进度回调）
                     ProgressAwareContentAggregator contentAggregator = new ProgressAwareContentAggregator(
-                            ReRankingContentAggregator.builder()
-                                    .scoringModel(BgeScoringModel.getInstance())
-                                    .build(),
+                            new IntelligentCustomerHybridContentAggregator(
+                                    ReRankingContentAggregator.builder()
+                                            .scoringModel(BgeScoringModel.getInstance())
+                                            .minScore(0.6)
+                                            .maxResults(5)
+                                            .querySelector(queryToContents -> queryToContents.keySet().iterator().next())
+                                            .build()
+                            ),
                             chatParam.assistantMessageId(),
                             chatMessageService,
                             processCallback
@@ -400,8 +409,8 @@ public class ChatApplicationServiceImpl implements ChatApplicationService, Initi
         // 默认权限过滤器：允许访客权限
         Filter permissionFilter = MetadataFilterBuilder.metadataKey(MetadataKeyConstant.ACCESSIBLE_BY).isEqualTo(RoleEnum.VISITOR.name());
 
-        // 根据用户角色获取权限 todo
-        RoleEnum roleEnum = null;
+        // 根据用户角色获取权限
+        RoleEnum roleEnum = userRoleService.getUserRole(chatParam);
 
         // 获取该文档支持的所有权限
         String[] permissions = DocumentPermissionUtils.getDocumentAccessiblePermission(roleEnum);

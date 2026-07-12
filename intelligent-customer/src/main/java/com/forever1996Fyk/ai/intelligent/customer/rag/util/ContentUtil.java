@@ -33,4 +33,14 @@ public final class ContentUtil {
         metadata.put(MetadataKeyConstant.SKIP_RERANK, "true");
         return Content.from(TextSegment.from(originalSegment.text(), metadata), content.metadata());
     }
+
+    /**
+     * 判断内容是否标记为跳过重排序/融合
+     */
+    public static boolean isSkipRerank(Content content) {
+        if (content == null || content.textSegment() == null || content.textSegment().metadata() == null) {
+            return false;
+        }
+        return "true".equals(String.valueOf(content.textSegment().metadata().toMap().get(MetadataKeyConstant.SKIP_RERANK)));
+    }
 }

@@ -4,6 +4,8 @@ import com.forever1996Fyk.ai.intelligent.customer.document.enums.DocumentStatus;
 import com.forever1996Fyk.ai.intelligent.customer.document.repository.bean.KnowledgeDocumentEntity;
 import com.baomidou.mybatisplus.extension.service.IService;
 
+import java.util.List;
+
 /**
  * <p>
  * 知识文档表 服务类
@@ -52,4 +54,11 @@ public interface KnowledgeDocumentService extends IService<KnowledgeDocumentEnti
      * @param versionId 版本ID（knowledge_document_version.version_id）
      */
     void deactivateVersion(Long versionId);
+
+    /**
+     * 删除文档，并级联逻辑删除该文档下的所有分段
+     *
+     * @param ids 文档id列表
+     */
+    boolean removeDocumentsWithSegments(List<Long> ids);
 }
