@@ -21,6 +21,7 @@
         <module>langchain4j</module>
         <module>intelligent-customer</module>
         <module>agent</module>
+        <module>ai-framework</module>
     </modules>
 
     <properties>
