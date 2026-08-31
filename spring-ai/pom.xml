@@ -22,7 +22,6 @@
         <module>spring-ai-chatmodel</module>
     </modules>
 
-
     <dependencyManagement>
         <dependencies>
             <dependency>
