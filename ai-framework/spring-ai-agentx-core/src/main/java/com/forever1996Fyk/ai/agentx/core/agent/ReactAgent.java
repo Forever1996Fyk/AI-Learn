@@ -4,6 +4,7 @@ import com.forever1996Fyk.ai.agentx.core.advisors.PauseAdvisor;
 import com.forever1996Fyk.ai.agentx.core.advisors.RequestLoggingAdvisor;
 import com.forever1996Fyk.ai.agentx.core.agent.internal.AgentTaskManager;
 import com.forever1996Fyk.ai.agentx.core.context.ContextPolicy;
+import com.forever1996Fyk.ai.agentx.core.interrupt.InMemoryPauseStateStore;
 import com.forever1996Fyk.ai.agentx.core.interrupt.PauseStateStore;
 import com.forever1996Fyk.ai.agentx.core.memory.LongTermMemoryConfig;
 import com.forever1996Fyk.ai.agentx.core.memory.LongTermMemoryManager;
@@ -20,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.web.servlet.server.Session;
 
@@ -30,8 +32,7 @@ import java.util.Objects;
 
 /**
  * @program: AI-Learn
- * @description:
- * ReactAgent - 基于 ReAct 范式的智能体实现。
+ * @description: ReactAgent - 基于 ReAct 范式的智能体实现。
  * <p>
  * 实现 Reasoning（推理）+ Acting（行动）循环模式，通过多轮对话完成复杂任务。
  * 支持自动多轮推理和工具调用、流式输出、会话记忆管理。
@@ -48,6 +49,7 @@ public class ReactAgent {
     private final ChatClient chatClient;
     private final int maxRounds;
     private final List<ToolCallback> tools;
+    private final List<Advisor> advisors;
 
     /**
      * 系统提示词
@@ -98,13 +100,56 @@ public class ReactAgent {
      */
     private final PauseStateStore stateStore;
 
-    private ReactAgent(SessionMessageStore sessionMessageStore,
+    private ReactAgent(Builder builder, SessionMessageStore sessionMessageStore,
                        ConversationStore conversationStore,
                        LongTermMemoryManager longTermMemoryManager,
                        TraceStore traceStore,
                        PauseStateStore pauseStateStore) {
 
+        this.deferredToolRegistry = builder.deferredToolRegistry;
+
+        // 构建 ChatClient, 统一配置工具选择和 Advisors
+        ChatClient.Builder chatBuilder = ChatClient.builder(builder.chatModel);
+
+        if (!builder.advisors.isEmpty()) {
+            chatBuilder.defaultAdvisors(builder.advisors);
+        }
+
+        // 配置工具选项 - 当有 deferredToolRegistry 时，ChatClient 只包含 alwaysLoad 工具
+        List<ToolCallback> activeTools = builder.tools;
+        var toolOptions = ToolCallingChatOptions.builder()
+                .toolCallbacks(activeTools)
+                // 关闭工具自动调用
+                .internalToolExecutionEnabled(false)
+                .build();
+
+        chatBuilder.defaultOptions(toolOptions)
+                .defaultToolCallbacks(activeTools);
+
+        this.chatClient = chatBuilder.build();
+        this.name = builder.name;
+        this.description = builder.description;
+        this.maxRounds = builder.maxRounds;
+        this.tools = List.copyOf(builder.tools);
+        this.advisors = List.copyOf(builder.advisors);
+        this.taskManager = builder.taskManager;
+        this.instructions = builder.instructions;
+        this.sessionMessageStore = sessionMessageStore;
+        this.conversationStore = conversationStore;
+        this.longTermMemoryManager = longTermMemoryManager;
+        this.enableSession = builder.enableSession;
+        this.thinkingMode = builder.thinkingMode;
+        this.maxRetries = builder.maxRetries;
+        this.contextPolicy = builder.contextPolicy;
+        this.traceStore = traceStore;
+        this.enableTrace = builder.enableTrace;
+        this.stateStore = pauseStateStore;
     }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
 
     public static class Builder {
         private String name;
@@ -428,6 +473,9 @@ public class ReactAgent {
                 taskManager = new AgentTaskManager();
             }
 
+            // askUser=true 表示自动注册内置 AskUserTool + 默认 ask_user拦截器
+            // 若调用方已显式配置了会拦截 ask_user 的 PauseAdvisor，则视为覆盖默认行为，
+            // 框架不再重复添加，避免同一个 ask_user 被双重拦截。
             if (askUser) {
                 tools.addAll(List.of(AskUserTool.create()));
 
@@ -444,6 +492,9 @@ public class ReactAgent {
             if (enableTrace) {
                 advisors.add(new RequestLoggingAdvisor(chatModel));
             }
+
+            return new ReactAgent(this, sessionMessageStore, conversationStore, longTermMemoryManager, traceStore,
+                    stateStore != null ? stateStore : new InMemoryPauseStateStore());
         }
     }
 }

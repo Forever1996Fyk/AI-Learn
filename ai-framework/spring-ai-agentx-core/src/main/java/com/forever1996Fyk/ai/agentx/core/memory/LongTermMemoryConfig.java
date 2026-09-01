@@ -11,12 +11,24 @@ import org.springframework.ai.vectorstore.VectorStore;
 public class LongTermMemoryConfig {
 
     private final VectorStore vectorStore;
+    private final int topK;
+    private final double similarityThreshold;
 
-    public LongTermMemoryConfig(VectorStore vectorStore) {
+    public LongTermMemoryConfig(VectorStore vectorStore, int topK, double similarityThreshold) {
         this.vectorStore = vectorStore;
+        this.topK = topK;
+        this.similarityThreshold = similarityThreshold;
     }
 
     public VectorStore getVectorStore() {
         return vectorStore;
+    }
+
+    public int getTopK() {
+        return topK;
+    }
+
+    public double getSimilarityThreshold() {
+        return similarityThreshold;
     }
 }

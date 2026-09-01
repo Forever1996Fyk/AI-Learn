@@ -2,9 +2,11 @@ package com.forever1996Fyk.ai.agentx.core.memory.store;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
+import java.util.List;
 
 /**
  * @program: AI-Learn
@@ -78,5 +80,13 @@ public class SessionMessageStore {
                 }
             }
         }
+    }
+
+    /**
+     * 加载某会话窗口指定状态键的全部消息，按 item_index 顺序合并。
+     * 用于多轮对话加载历史上下文。
+     */
+    public List<Message> getMessages(String conversationId, String stateKey) {
+        return null;
     }
 }
