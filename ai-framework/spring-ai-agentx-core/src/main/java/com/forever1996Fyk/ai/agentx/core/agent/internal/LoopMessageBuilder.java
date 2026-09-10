@@ -3,6 +3,7 @@ package com.forever1996Fyk.ai.agentx.core.agent.internal;
 import com.forever1996Fyk.ai.agentx.core.memory.store.SessionMessageStore;
 import com.forever1996Fyk.ai.agentx.core.memory.util.MemoryInjector;
 import com.forever1996Fyk.ai.agentx.core.model.RunnableParams;
+import com.forever1996Fyk.ai.agentx.core.model.ThinkingMode;
 import com.forever1996Fyk.ai.agentx.core.prompt.PromptConstants;
 import com.forever1996Fyk.ai.agentx.core.tools.toolsearch.DeferredToolRegistry;
 import org.apache.commons.lang3.ObjectUtils;
@@ -11,6 +12,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.converter.BeanOutputConverter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,14 +31,16 @@ public class LoopMessageBuilder {
 
     private final String instructions;
     private final MemoryInjector memoryInjector;
+    private final ThinkingMode thinkingMode;
     private final DeferredToolRegistry deferredToolRegistry;
     private final boolean todoWriteEnabled;
     private final boolean enableSession;
     private final SessionMessageStore sessionMessageStore;
 
-    public LoopMessageBuilder(String instructions, MemoryInjector memoryInjector, DeferredToolRegistry deferredToolRegistry, boolean todoWriteEnabled, boolean enableSession, SessionMessageStore sessionMessageStore) {
+    public LoopMessageBuilder(String instructions, MemoryInjector memoryInjector, ThinkingMode thinkingMode, DeferredToolRegistry deferredToolRegistry, boolean todoWriteEnabled, boolean enableSession, SessionMessageStore sessionMessageStore) {
         this.instructions = instructions;
         this.memoryInjector = memoryInjector;
+        this.thinkingMode = thinkingMode;
         this.deferredToolRegistry = deferredToolRegistry;
         this.todoWriteEnabled = todoWriteEnabled;
         this.enableSession = enableSession;
@@ -80,6 +85,23 @@ public class LoopMessageBuilder {
             }
         }
 
+        // 3. 边界标记: 当前的消息为历史/背景, 此后为本轮新增
+        int newMsgStartIndex = messages.size();
+
+        // 4. 当前用户问题
+        String userContent = query;
+        if (params != null && params.getOutputType() != null) {
+            BeanOutputConverter<?> converter = new BeanOutputConverter<>(
+                    params.getOutputType().toTypeReference()
+            );
+            userContent = userContent + "\n" + converter.getFormat();
+        }
+
+        if (thinkingMode == ThinkingMode.DISABLED) {
+            userContent = userContent + "\n<no_think>";
+        }
+        messages.add(new UserMessage(userContent));
+        return new BuiltMessages(messages, newMsgStartIndex);
     }
 
 

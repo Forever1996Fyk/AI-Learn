@@ -27,11 +27,13 @@ public class RunnableParams {
     private final String conversationId;
     private final String userId;
     private final Map<String, Object> customParams;
+    private final OutputType outputType;
 
     private RunnableParams(Builder builder) {
         this.conversationId = builder.conversationId;
         this.userId = builder.userId;
         this.customParams = builder.customParams;
+        this.outputType = builder.outputType;
     }
 
     public String getConversationId() {
@@ -46,10 +48,15 @@ public class RunnableParams {
         return customParams;
     }
 
+    public OutputType getOutputType() {
+        return outputType;
+    }
+
     public static class Builder {
         private String conversationId;
         private String userId;
         private Map<String, Object> customParams;
+        private OutputType outputType;
 
         public Builder conversationId(String conversationId) {
             this.conversationId = conversationId;
@@ -62,6 +69,10 @@ public class RunnableParams {
         }
         public Builder customParams(Map<String, Object> customParams) {
             this.customParams = customParams;
+            return this;
+        }
+        public Builder outputType(OutputType outputType) {
+            this.outputType = outputType;
             return this;
         }
         public RunnableParams build() {

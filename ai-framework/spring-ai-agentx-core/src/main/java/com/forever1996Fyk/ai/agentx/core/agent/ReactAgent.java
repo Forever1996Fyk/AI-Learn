@@ -23,7 +23,6 @@ import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.boot.web.servlet.server.Session;
 
 import javax.sql.DataSource;
 import java.util.ArrayList;

@@ -1,22 +1,35 @@
 package com.forever1996Fyk.ai.agentx.core.agent.internal;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.forever1996Fyk.ai.agentx.core.exception.AgentErrorCode;
+import com.forever1996Fyk.ai.agentx.core.exception.AgentException;
 import com.forever1996Fyk.ai.agentx.core.interrupt.PauseStateStore;
 import com.forever1996Fyk.ai.agentx.core.memory.LongTermMemoryManager;
 import com.forever1996Fyk.ai.agentx.core.memory.store.ConversationStore;
 import com.forever1996Fyk.ai.agentx.core.memory.store.SessionMessageStore;
+import com.forever1996Fyk.ai.agentx.core.memory.util.MemoryInjector;
+import com.forever1996Fyk.ai.agentx.core.memory.util.MemoryPersistor;
+import com.forever1996Fyk.ai.agentx.core.model.AgentStreamEvent;
 import com.forever1996Fyk.ai.agentx.core.model.RunnableParams;
 import com.forever1996Fyk.ai.agentx.core.model.ThinkingMode;
+import com.forever1996Fyk.ai.agentx.core.stage.AgentRuntimeContext;
 import com.forever1996Fyk.ai.agentx.core.tools.toolsearch.DeferredToolRegistry;
 import com.forever1996Fyk.ai.agentx.core.trace.TraceStore;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.boot.web.servlet.server.Session;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -35,16 +48,70 @@ public class AgentLoopExecutor {
 
     private final int maxRounds;
     private final int maxRetries;
+    private final Map<String, ToolCallback> toolMap;
     private final String askUserToolName;
     private final AgentTaskManager taskManager;
+    private MemoryInjector memoryInjector;
+    private final LoopMessageBuilder messageBuilder;
 
     private final ThinkingMode thinkingMode;
+    private final ToolCallExecutor toolCallExecutor;
+
+    /**
+     * 会话/Trace/暂停状态的持久化入口，集中所有落库副作用。
+     */
+    private final SessionPersister sessionPersister;
+
     private AgentLoopExecutor(Builder builder) {
         this.maxRounds = builder.maxRounds;
         this.maxRetries = builder.maxRetries;
         this.askUserToolName = builder.askUserToolName;
         this.taskManager = builder.taskManager;
         this.thinkingMode = builder.thinkingMode;
+
+        DeferredToolRegistry.Session deferredToolSession = builder.deferredToolRegistry != null
+                ? builder.deferredToolRegistry.createSession()
+                : null;
+
+        List<Advisor> advisors = builder.advisors != null ? List.copyOf(builder.advisors) : List.of();
+        List<ToolCallback> alwaysLoadTools = builder.tools != null ? List.copyOf(builder.tools) : List.of();
+
+        Map<String, ToolCallback> map = new HashMap<>();
+        if (builder.tools != null) {
+            for (ToolCallback tool : builder.tools) {
+                map.put(tool.getToolDefinition().name(), tool);
+            }
+        }
+        if (builder.deferredToolRegistry != null) {
+            map.putAll(builder.deferredToolRegistry.getAllDeferredTools());
+            if (deferredToolSession != null) {
+                ToolCallback searchCallback = deferredToolSession.getToolSearchCallback();
+                map.put(searchCallback.getToolDefinition().name(), searchCallback);
+            }
+        }
+        this.toolMap = map;
+
+        this.memoryInjector = new MemoryInjector(builder.longTermMemoryManager);
+
+        // 记忆持久化器（委托给 SessionPersister 使用）
+        MemoryPersistor memoryPersistor = new MemoryPersistor(builder.longTermMemoryManager);
+        this.sessionPersister = new SessionPersister(
+                builder.enableSession,builder.enableTrace,
+                builder.conversationStore, builder.sessionMessageStore,
+                builder.traceStore, builder.stateStore, memoryPersistor
+        );
+
+        // 消息构建器
+        boolean hasTodoWrite = map.containsKey("TodoWrite");
+        this.messageBuilder = new LoopMessageBuilder(
+                builder.instructions, memoryInjector, builder.thinkingMode,
+                builder.deferredToolRegistry, hasTodoWrite, builder.enableSession, builder.sessionMessageStore
+        );
+
+        // 工具调用执行器
+        this.toolCallExecutor = new ToolCallExecutor(toolMap, new ObjectMapper(),
+                builder.askUserToolName);
+
     }
 
     public static Builder builder() {
@@ -56,6 +123,20 @@ public class AgentLoopExecutor {
      */
     public Flux<String> stream(String query, RunnableParams params) {
         String conversationId = params != null ? params.getConversationId() : null;
+        BuiltMessages built = messageBuilder.buildInitialMessages(query, params);
+        List<Message> messages = built.messages();
+
+        Sinks.Many<AgentStreamEvent> sink = Sinks.many().unicast().onBackpressureBuffer();
+
+        if (taskManager != null && StringUtils.isNotBlank(conversationId)) {
+            AgentTaskManager.TaskInfo taskInfo = taskManager.registerTask(conversationId, sink);
+            if (taskInfo == null) {
+                return Flux.error(new AgentException(AgentErrorCode.CONCURRENT_EXECUTION,
+                        "该会话正在执行中，请稍后再试: " + conversationId));
+            }
+        }
+        AgentRuntimeContext execCtx = new AgentRuntimeContext(query, params);
+
     }
 
     public static class Builder {
@@ -171,7 +252,7 @@ public class AgentLoopExecutor {
 
         public AgentLoopExecutor build() {
             Objects.requireNonNull(chatClient, "chatClient must not be null");
-            return new AgentLoopExecutor(this);
+            return new AgentLoopExecutor(this, );
         }
     }
 }
