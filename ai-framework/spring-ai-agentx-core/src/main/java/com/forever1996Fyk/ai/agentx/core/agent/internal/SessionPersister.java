@@ -1,13 +1,27 @@
 package com.forever1996Fyk.ai.agentx.core.agent.internal;
 
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.forever1996Fyk.ai.agentx.core.interrupt.PauseStateStore;
 import com.forever1996Fyk.ai.agentx.core.memory.store.ConversationStore;
 import com.forever1996Fyk.ai.agentx.core.memory.store.SessionMessageStore;
 import com.forever1996Fyk.ai.agentx.core.memory.util.MemoryPersistor;
+import com.forever1996Fyk.ai.agentx.core.model.PauseState;
+import com.forever1996Fyk.ai.agentx.core.model.RunnableParams;
+import com.forever1996Fyk.ai.agentx.core.stage.AgentRuntimeContext;
+import com.forever1996Fyk.ai.agentx.core.trace.TraceManager;
 import com.forever1996Fyk.ai.agentx.core.trace.TraceStore;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import reactor.core.publisher.SignalType;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @program: AI-Learn
@@ -38,5 +52,126 @@ public class SessionPersister {
         this.traceStore = traceStore;
         this.stateStore = stateStore;
         this.memoryPersistor = memoryPersistor;
+    }
+
+
+    /**
+     * 生成 sessionId、写开局记录、按需创建 TraceManager。
+     */
+    public void initSession(AgentRuntimeContext execCtx, RunnableParams params, String query) {
+        long sessionId = IdWorker.getId();
+        execCtx.setSessionId(sessionId);
+
+        String conversationId = params != null ? params.getConversationId() : null;
+        String userId = params != null ? params.getUserId() : null;
+
+        if (enableSession && conversationStore != null && conversationId != null) {
+            conversationStore.saveStart(conversationId, sessionId, userId, query);
+        }
+
+        if (traceStore == null || !enableTrace || conversationId == null) {
+            return;
+        }
+        execCtx.setTraceManager(new TraceManager(traceStore, sessionId, conversationId));
+    }
+
+    /**
+     * 终态批量落库：写新增消息、更新会话状态、按需触发记忆持久化。靠 CAS 保证只写一次。
+     */
+    public void persistOnTerminal(AgentRuntimeContext execCtx, List<Message> messages, SignalType signal) {
+        String conversationId = execCtx.getConversationId();
+        if (conversationId == null || !enableSession || sessionMessageStore == null) {
+            return;
+        }
+        if (!execCtx.tryMarkPersisted()) {
+            return;
+        }
+
+        String status = execCtx.getTerminalStatus();
+        if (StringUtils.isBlank(status)) {
+            status = switch (signal) {
+                case ON_COMPLETE -> "completed";
+                case ON_ERROR -> "error";
+                case CANCEL -> "interrupted";
+                default -> "interrupted";
+            };
+        }
+
+        try {
+            int start = execCtx.getNewMsgStartIndex();
+            List<Message> originalSnapshot = execCtx.getOriginalMessagesSnapshot();
+            List<Message> thisCallMessages = (originalSnapshot != null && start < originalSnapshot.size())
+                    ? new ArrayList<>(originalSnapshot.subList(start, originalSnapshot.size()))
+                    : List.of();
+            if (!thisCallMessages.isEmpty()) {
+                sessionMessageStore.appendMessages(
+                        conversationId, execCtx.getSessionId(),
+                        "original_messages", thisCallMessages);
+            }
+            sessionMessageStore.replaceMessages(
+                    conversationId, execCtx.getSessionId(),
+                    "working_messages", messages);
+            if (conversationStore != null) {
+                conversationStore.updateStatus(execCtx.getSessionId(), status);
+            }
+            if ("completed".equals(status) && memoryPersistor != null && !thisCallMessages.isEmpty()) {
+                memoryPersistor.persist(execCtx.getParams(), thisCallMessages);
+            }
+        } catch (Exception e) {
+            log.error("Failed to persist terminal session: {}", e.getMessage());
+        }
+    }
+
+
+    /**
+     * 写暂停快照（HITL 与 USER_INTERRUPT 共用），失败仅记录日志。
+     */
+    public void persistPauseState(PauseState state) {
+        if (stateStore == null || state == null) {
+            return;
+        }
+        try {
+            stateStore.save(state);
+        } catch (Exception e) {
+            log.warn("[SessionPersister] Failed to persist pause state: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 累加 token 并写一条 LLM 调用 trace。
+     */
+    public void recordTrace(AgentRuntimeContext execCtx, int round, String requestJson,
+                            String outputData, String think,
+                            long promptTokens, long completionTokens, long durationMs) {
+        execCtx.accumulateTokens(promptTokens, completionTokens);
+        log.debug("[TRACE] round={}, prompt={}, completion={}, totalPrompt={}, totalCompletion={}",
+                round, promptTokens, completionTokens,
+                execCtx.getTotalPromptTokens(), execCtx.getTotalCompletionTokens());
+        TraceManager tm = execCtx.getTraceManager();
+        if (tm == null) {
+            return;
+        }
+        tm.trace(round, requestJson, outputData, think,
+                (int) promptTokens, (int) completionTokens, durationMs);
+    }
+
+    /**
+     * 将工具调用列表序列化为 trace 用的 JSON。
+     */
+    public String serializeToolCalls(List<AssistantMessage.ToolCall> toolCalls) {
+        try {
+            var list = toolCalls.stream().map(tc -> {
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("id", tc.id());
+                map.put("type", tc.type());
+                map.put("name", tc.name());
+                map.put("arguments", tc.arguments());
+                return map;
+            }).toList();
+            return objectMapper.writeValueAsString(Map.of("tool_calls", list));
+        } catch (Exception e) {
+            log.debug("[TraceStore] Failed to serialize tool calls: {}", e.getMessage());
+            return null;
+        }
     }
 }

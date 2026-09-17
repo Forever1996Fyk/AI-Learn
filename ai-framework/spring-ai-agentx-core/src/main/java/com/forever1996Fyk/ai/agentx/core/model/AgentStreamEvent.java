@@ -32,9 +32,19 @@ import org.w3c.dom.Text;
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
         @JsonSubTypes.Type(value = AgentStreamEvent.Thinking.class, name = "Thinking"),
+        @JsonSubTypes.Type(value = AgentStreamEvent.Text.class, name = "Text"),
+        @JsonSubTypes.Type(value = AgentStreamEvent.ToolStart.class, name = "ToolStart"),
+        @JsonSubTypes.Type(value = AgentStreamEvent.ToolEnd.class, name = "ToolEnd"),
+        @JsonSubTypes.Type(value = AgentStreamEvent.Paused.class, name = "Paused"),
+        @JsonSubTypes.Type(value = AgentStreamEvent.Complete.class, name = "Complete")
 })
 public sealed interface AgentStreamEvent permits
-        AgentStreamEvent.Thinking {
+        AgentStreamEvent.Thinking,
+        AgentStreamEvent.Text,
+        AgentStreamEvent.ToolStart,
+        AgentStreamEvent.ToolEnd,
+        AgentStreamEvent.Paused,
+        AgentStreamEvent.Complete{
 
     /**
      * LLM 思考过程（&lt;think/&gt; 标签内的内容）。
@@ -46,5 +56,79 @@ public sealed interface AgentStreamEvent permits
         public Thinking(String content) {
             this(content, null);
         }
+    }
+
+    /**
+     * LLM 正常文本输出。
+     *
+     * @param content 文本内容
+     * @param source  事件来源（null 表示主 Agent）
+     */
+    record Text(String content, SubAgentSource source) implements AgentStreamEvent {
+        public Text(String content) { this(content, null); }
+    }
+
+    /**
+     * 工具即将执行。
+     *
+     * @param toolName  工具名称
+     * @param toolCallId 工具调用 ID
+     * @param arguments 工具调用参数 JSON
+     * @param source    事件来源（null 表示主 Agent）
+     */
+    record ToolStart(String toolName, String toolCallId, String arguments, SubAgentSource source) implements AgentStreamEvent {
+        public ToolStart(String toolName, String toolCallId, String arguments) { this(toolName, toolCallId, arguments, null); }
+    }
+
+    /**
+     * 工具执行完成。
+     *
+     * @param toolName  工具名称
+     * @param toolCallId 工具调用 ID
+     * @param result    工具返回结果
+     * @param source    事件来源（null 表示主 Agent）
+     */
+    record ToolEnd(String toolName, String toolCallId, String result, SubAgentSource source) implements AgentStreamEvent {
+        public ToolEnd(String toolName, String toolCallId, String result) { this(toolName, toolCallId, result, null); }
+    }
+
+    /**
+     * 执行暂停事件，等待外部输入。
+     *
+     * <p>暂停原因（HITL 工具请求 / 用户主动中断）通过 {@link PauseState#getReason()} 区分，
+     * 前端可按原因展示不同 UI（如 HITL 显示工具确认按钮、USER_INTERRUPT 显示"已停止"提示）。
+     *
+     * @param state  暂停状态（含 reason / interruptPhase 等扩展字段）
+     * @param source 事件来源（null 表示主 Agent）
+     */
+    record Paused(PauseState state, SubAgentSource source) implements AgentStreamEvent {
+        public Paused(PauseState state) { this(state, null); }
+    }
+
+    /**
+     * Agent 执行完成。
+     *
+     * @param totalPromptTokens     整个对话总输入 token 数
+     * @param totalCompletionTokens 整个对话总输出 token 数
+     * @param conversationId        会话 ID（主 Agent 才填，子 Agent 透传时丢弃；可为 null）
+     * @param sessionId             本次执行对应的 agentx_session 主键 ID（主 Agent 才填；
+     *                              可用于关联文件、外部资源等；为 null 表示未启用会话存储）
+     * @param source                事件来源（null 表示主 Agent）
+     */
+    record Complete(long totalPromptTokens,
+                    long totalCompletionTokens,
+                    String conversationId,
+                    Long sessionId,
+                    SubAgentSource source) implements AgentStreamEvent {
+        /** 兼容旧调用：仅 tokens + source */
+        public Complete(long totalPromptTokens, long totalCompletionTokens, SubAgentSource source) {
+            this(totalPromptTokens, totalCompletionTokens, null, null, source);
+        }
+        /** 兼容旧调用：仅 tokens */
+        public Complete(long totalPromptTokens, long totalCompletionTokens) {
+            this(totalPromptTokens, totalCompletionTokens, null, null, null);
+        }
+        /** 兼容旧调用：默认空 */
+        public Complete() { this(0, 0, null, null, null); }
     }
 }

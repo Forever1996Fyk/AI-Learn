@@ -1,11 +1,15 @@
 package com.forever1996Fyk.ai.agentx.core.memory.store;
 
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.forever1996Fyk.ai.agentx.core.util.MessageJsonSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -43,6 +47,27 @@ public class SessionMessageStore {
 
     private static final String CREATE_IDX_CONV_SQL = """
             CREATE INDEX idx_conv_state ON agentx_session (conversation_id, state_key)
+            """;
+
+    private static final String INSERT_SQL = """
+            INSERT INTO agentx_session (id, conversation_id, session_id, state_key, item_index, state_data, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """;
+
+    private static final String SELECT_SQL = """
+            SELECT state_data FROM agentx_session
+            WHERE conversation_id = ? AND state_key = ?
+            ORDER BY item_index ASC, id ASC
+            """;
+
+    private static final String MAX_INDEX_SQL = """
+            SELECT COALESCE(MAX(item_index), -1) FROM agentx_session
+            WHERE conversation_id = ? AND state_key = ?
+            """;
+
+    private static final String DELETE_BY_CONV_KEY_SQL = """
+            DELETE FROM agentx_session
+            WHERE conversation_id = ? AND state_key = ?
             """;
 
     private final JdbcTemplate jdbcTemplate;
@@ -83,10 +108,87 @@ public class SessionMessageStore {
     }
 
     /**
+     * 批量追加消息。item_index 从当前最大值 +1 起递增。
+     * 终态时调用：一次调用新增的消息一次性写入，避免 ReAct 循环中频繁 DB I/O。
+     * system 消息属于运行时外部上下文，不进入 agentx_session。
+     */
+    public void appendMessages(String conversationId, long sessionId,
+                               String stateKey, List<Message> messages) {
+        if (conversationId == null || stateKey == null || messages == null || messages.isEmpty()) {
+            return;
+        }
+        List<Message> persistedMessages = filterPersistableMessages(messages);
+        if (persistedMessages.isEmpty()) {
+            return;
+        }
+        ensureInitialized();
+
+        Integer maxIndex = jdbcTemplate.queryForObject(MAX_INDEX_SQL, Integer.class, conversationId, stateKey);
+        int startIndex = (maxIndex == null ? -1 : maxIndex) + 1;
+
+        String sessionIdStr = String.valueOf(sessionId);
+        List<Object[]> batchArgs = new ArrayList<>(persistedMessages.size());
+        for (int i = 0; i < persistedMessages.size(); i++) {
+            String data = MessageJsonSerializer.toJson(List.of(persistedMessages.get(i)));
+            batchArgs.add(new Object[]{
+                    IdWorker.getId(), conversationId, sessionIdStr, stateKey, startIndex + i, data
+            });
+        }
+        jdbcTemplate.batchUpdate(INSERT_SQL, batchArgs);
+        log.debug("Appended {} messages: conversationId={}, sessionId={}, stateKey={}, startIndex={}",
+                persistedMessages.size(), conversationId, sessionId, stateKey, startIndex);
+    }
+
+    /**
+     * 覆盖写：先删除指定 conversationId+stateKey 的全部行，再批量插入。
+     * 用于 working_messages 等需要随压缩演进的视图状态。
+     */
+    public void replaceMessages(String conversationId, long sessionId,
+                                String stateKey, List<Message> messages) {
+        if (conversationId == null || stateKey == null) {
+            return;
+        }
+        List<Message> persistedMessages = filterPersistableMessages(messages);
+        ensureInitialized();
+        jdbcTemplate.update(DELETE_BY_CONV_KEY_SQL, conversationId, stateKey);
+        appendMessages(conversationId, sessionId, stateKey, persistedMessages);
+        log.debug("Replaced state: conversationId={}, stateKey={}, rows={}",
+                conversationId, stateKey, persistedMessages.size());
+    }
+
+
+    private List<Message> filterPersistableMessages(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        List<Message> persisted = new ArrayList<>(messages.size());
+        for (Message message : messages) {
+            if (!(message instanceof SystemMessage)) {
+                persisted.add(message);
+            }
+        }
+        return persisted;
+    }
+
+
+    /**
      * 加载某会话窗口指定状态键的全部消息，按 item_index 顺序合并。
      * 用于多轮对话加载历史上下文。
      */
     public List<Message> getMessages(String conversationId, String stateKey) {
-        return null;
+        if (conversationId == null || stateKey == null) {
+            return new ArrayList<>();
+        }
+        ensureInitialized();
+        List<String> jsonList = jdbcTemplate.queryForList(
+                SELECT_SQL, String.class, conversationId, stateKey);
+
+        List<Message> all = new ArrayList<>(jsonList.size() * 2);
+        for (String json : jsonList) {
+            if (json != null && !json.isBlank()) {
+                all.addAll(MessageJsonSerializer.fromJson(json));
+            }
+        }
+        return all;
     }
 }

@@ -2,6 +2,7 @@ package com.forever1996Fyk.ai.agentx.core.agent;
 
 import com.forever1996Fyk.ai.agentx.core.advisors.PauseAdvisor;
 import com.forever1996Fyk.ai.agentx.core.advisors.RequestLoggingAdvisor;
+import com.forever1996Fyk.ai.agentx.core.agent.internal.AgentLoopExecutor;
 import com.forever1996Fyk.ai.agentx.core.agent.internal.AgentTaskManager;
 import com.forever1996Fyk.ai.agentx.core.context.ContextPolicy;
 import com.forever1996Fyk.ai.agentx.core.interrupt.InMemoryPauseStateStore;
@@ -11,6 +12,8 @@ import com.forever1996Fyk.ai.agentx.core.memory.LongTermMemoryManager;
 import com.forever1996Fyk.ai.agentx.core.memory.store.ConversationStore;
 import com.forever1996Fyk.ai.agentx.core.memory.store.DataSourceStorageFactory;
 import com.forever1996Fyk.ai.agentx.core.memory.store.SessionMessageStore;
+import com.forever1996Fyk.ai.agentx.core.model.AgentStreamEvent;
+import com.forever1996Fyk.ai.agentx.core.model.RunnableParams;
 import com.forever1996Fyk.ai.agentx.core.model.ThinkingMode;
 import com.forever1996Fyk.ai.agentx.core.tools.AskUserTool;
 import com.forever1996Fyk.ai.agentx.core.tools.toolsearch.DeferredToolRegistry;
@@ -23,6 +26,7 @@ import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
+import reactor.core.publisher.Flux;
 
 import javax.sql.DataSource;
 import java.util.ArrayList;
@@ -46,6 +50,7 @@ public class ReactAgent {
     private final String name;
     private final String description;
     private final ChatClient chatClient;
+    private final ChatModel chatModel;
     private final int maxRounds;
     private final List<ToolCallback> tools;
     private final List<Advisor> advisors;
@@ -128,6 +133,7 @@ public class ReactAgent {
         this.chatClient = chatBuilder.build();
         this.name = builder.name;
         this.description = builder.description;
+        this.chatModel = builder.chatModel;
         this.maxRounds = builder.maxRounds;
         this.tools = List.copyOf(builder.tools);
         this.advisors = List.copyOf(builder.advisors);
@@ -143,6 +149,119 @@ public class ReactAgent {
         this.traceStore = traceStore;
         this.enableTrace = builder.enableTrace;
         this.stateStore = pauseStateStore;
+    }
+
+    /**
+     * 流式调用 Agent
+     *
+     * @param query 用户消息
+     * @return 文本流
+     */
+    public Flux<String> stream(String query) {
+        return stream(query, RunnableParams.empty());
+    }
+
+    /**
+     * 流式调用 Agent（带参数）
+     *
+     * @param query  用户消息
+     * @param params 调用参数
+     * @return 文本流（过滤掉暂停事件）
+     */
+    public Flux<String> stream(String query, RunnableParams params) {
+        if (params == null) {
+            params = RunnableParams.empty();
+        }
+        return createExecutor().stream(query, params)
+                .filter(e -> e instanceof AgentStreamEvent.Text)
+                .map(e -> ((AgentStreamEvent.Text) e).content());
+    }
+
+    private AgentLoopExecutor createExecutor() {
+        // 从 PauseAdvisor 中提取 askUserToolName，供 ToolCallExecutor 的 resume 逻辑使用
+        String askUserToolName = null;
+        for (Advisor advisor : advisors) {
+            if (advisor instanceof PauseAdvisor pa) {
+                if (pa.getAskUserToolName() != null) {
+                    askUserToolName = pa.getAskUserToolName();
+                }
+            }
+        }
+
+        // Hook 列表：用户 Hook + 按需引入的上下文压缩 Hook（压缩 Hook 优先级最高，置列表首部）
+//        List<AgentHook> allHooks = new ArrayList<>(hooks != null ? hooks : List.of());
+
+        var executorBuilder = AgentLoopExecutor.builder()
+                .chatClient(chatClient)
+                .maxRounds(maxRounds)
+                .tools(tools)
+                .taskManager(taskManager)
+                .sessionMessageStore(sessionMessageStore)
+                .conversationStore(conversationStore)
+                .instructions(instructions)
+                .chatModel(chatModel)
+                .longTermMemoryManager(longTermMemoryManager)
+                .enableSession(enableSession)
+                .enableTrace(enableTrace)
+                .askUserToolName(askUserToolName)
+                .thinkingMode(thinkingMode)
+                .maxRetries(maxRetries)
+                .advisors(advisors);
+
+        // 上下文压缩（可选，按需引入 ContextCompactionHook）
+        if (this.contextPolicy != null) {
+//            OffloadStore offloadStore = (enableSession && sessionMessageStore != null)
+//                    ? new SessionBackedOffloadStore(sessionMessageStore)
+//                    : new NoOpOffloadStore();
+//            LlmSummarizer summarizer = new LlmSummarizer(this.chatModel);
+//            List<CompressionStrategy> chain = new ArrayList<>();
+//            chain.add(new HistoricalToolListStrategy());
+//            chain.add(new LargeMsgOffloadWithKeepStrategy());
+//            chain.add(new LargeMsgOffloadNoKeepStrategy());
+//            chain.add(new HistoricalRoundSummaryStrategy(summarizer));
+//            chain.add(new CurrentRoundLargeMsgStrategy(summarizer));
+//            chain.add(new CurrentRoundOverallStrategy(summarizer));
+//            ContextCompactor compactor = new ContextCompactor(
+//                    this.contextPolicy, this.chatModel,
+//                    offloadStore, sessionMessageStore,
+//                    chain);
+//            // 压缩 Hook 置列表首部（priority=Integer.MAX_VALUE 已确保最先执行）
+//            allHooks.add(0, new ContextCompactionHook(compactor));
+//
+//            // context_reload 工具（仅在启用 session 时注册，追加到用户已配置的 tools 之后）
+//            if (enableSession && sessionMessageStore != null) {
+//                ToolCallback[] reloadCallbacks = org.springframework.ai.support.ToolCallbacks.from(
+//                        new ContextReloadTool(sessionMessageStore));
+//                List<ToolCallback> merged = new ArrayList<>(tools);
+//                for (ToolCallback tc : reloadCallbacks) {
+//                    merged.add(tc);
+//                }
+//                executorBuilder.tools(merged);
+//            }
+        }
+//        executorBuilder.hooks(allHooks);
+
+        // 长期记忆（可选）
+        if (longTermMemoryManager != null) {
+            executorBuilder.longTermMemoryManager(longTermMemoryManager);
+        }
+
+        // 延迟工具注册（可选）
+        if (deferredToolRegistry != null) {
+            executorBuilder.deferredToolRegistry(deferredToolRegistry);
+        }
+
+        // 审计 trace（可选）
+        if (traceStore != null) {
+            executorBuilder.traceStore(traceStore);
+        }
+
+        // 中断状态持久化（必有默认实现）
+        if (stateStore != null) {
+            executorBuilder.stateStore(stateStore);
+        }
+
+        return executorBuilder.build();
     }
 
     public static Builder builder() {

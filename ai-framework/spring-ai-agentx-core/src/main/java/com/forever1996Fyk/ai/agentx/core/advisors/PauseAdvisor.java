@@ -15,6 +15,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -39,6 +40,14 @@ public class PauseAdvisor implements CallAdvisor, StreamAdvisor {
      */
     private final String askUserToolName;
 
+    public Set<String> getInterceptToolNames() {
+        return interceptToolNames;
+    }
+
+    public String getAskUserToolName() {
+        return askUserToolName;
+    }
+
     public PauseAdvisor(Set<String> interceptToolNames) {
         this.interceptToolNames = interceptToolNames != null ? interceptToolNames : Set.of();
         this.askUserToolName = null;
@@ -61,6 +70,17 @@ public class PauseAdvisor implements CallAdvisor, StreamAdvisor {
     private PauseAdvisor(Set<String> interceptToolNames, String askUserToolName) {
         this.interceptToolNames = interceptToolNames != null ? interceptToolNames : Set.of();
         this.askUserToolName = askUserToolName;
+    }
+
+    /**
+     * 类型安全地从 context 中获取暂停的工具调用列表。
+     *
+     * @param context ChatClientResponse 的 context
+     * @return 暂停的工具调用列表，无暂停时返回 null
+     */
+    @SuppressWarnings("unchecked")
+    public static List<PendingToolCall> getPendingTools(Map<String, Object> context) {
+        return (List<PendingToolCall>) context.get(PENDING_TOOLS);
     }
 
     @Override

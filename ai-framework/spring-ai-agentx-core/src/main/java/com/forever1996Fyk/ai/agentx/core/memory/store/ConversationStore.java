@@ -1,5 +1,7 @@
 package com.forever1996Fyk.ai.agentx.core.memory.store;
 
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -42,6 +44,17 @@ public class ConversationStore {
             CREATE INDEX idx_conv_id ON agentx_conversation (conversation_id)
             """;
 
+    private static final String INSERT_SQL = """
+            INSERT INTO agentx_conversation (id, conversation_id, session_id, user_id, question, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'running', CURRENT_TIMESTAMP)
+            """;
+
+    private static final String UPDATE_STATUS_SQL = """
+            UPDATE agentx_conversation
+            SET status = ?, completed_at = CASE WHEN ? = 'completed' THEN CURRENT_TIMESTAMP ELSE completed_at END
+            WHERE session_id = ?
+            """;
+
     private final JdbcTemplate jdbcTemplate;
     private volatile boolean initialized = false;
 
@@ -77,5 +90,27 @@ public class ConversationStore {
                 }
             }
         }
+    }
+
+    /**
+     * 开局保存：调用开始时写入一行，status='running'。
+     */
+    public void saveStart(String conversationId, long sessionId, String userId, String query) {
+        if (StringUtils.isAnyBlank(conversationId, query)) {
+            return;
+        }
+        ensureInitialized();
+        jdbcTemplate.update(INSERT_SQL,
+                IdWorker.getId(), conversationId, String.valueOf(sessionId), userId, query);
+        log.debug("Saved conversation start: conversationId={}, sessionId={}", conversationId, sessionId);
+    }
+
+    /**
+     * 更新终态状态。status='completed' 时同步写 completed_at。
+     */
+    public void updateStatus(long sessionId, String status) {
+        ensureInitialized();
+        jdbcTemplate.update(UPDATE_STATUS_SQL, status, status, String.valueOf(sessionId));
+        log.debug("Updated conversation status: sessionId={}, status={}", sessionId, status);
     }
 }

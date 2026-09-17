@@ -1,5 +1,6 @@
 package com.forever1996Fyk.ai.agentx.core.trace;
 
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -101,6 +102,27 @@ public class TraceStore {
                     log.info("agentx_trace table initialized");
                 }
             }
+        }
+    }
+
+
+    /**
+     * 同步写入一条 trace 记录。失败仅打日志，不抛异常。
+     */
+    public void save(long sessionId, String conversationId, int round,
+                     String inputData, String outputData, String think,
+                     int promptTokens, int completionTokens,
+                     long durationMs, boolean success, String errorMessage) {
+        try {
+            // success 传 int 而非 boolean：SMALLINT 列在 PG/GaussDB 上 setBoolean 会抛类型错误
+            jdbcTemplate.update(INSERT_SQL,
+                    IdWorker.getId(), sessionId, conversationId, round,
+                    inputData, outputData, think,
+                    promptTokens, completionTokens, durationMs,
+                    success ? 1 : 0, errorMessage);
+        } catch (Exception e) {
+            log.warn("[TraceStore] Failed to save trace: sessionId={}, round={}, error={}",
+                    sessionId, round, e.getMessage());
         }
     }
 
