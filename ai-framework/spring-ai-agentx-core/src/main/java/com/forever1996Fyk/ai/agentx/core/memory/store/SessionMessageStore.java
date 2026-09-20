@@ -1,7 +1,10 @@
 package com.forever1996Fyk.ai.agentx.core.memory.store;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.forever1996Fyk.ai.agentx.core.util.MessageJsonSerializer;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
@@ -11,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import javax.sql.DataSource;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @program: AI-Learn
@@ -26,6 +30,7 @@ import java.util.List;
 public class SessionMessageStore {
 
     private static final Logger log = LoggerFactory.getLogger(SessionMessageStore.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final String CREATE_TABLE_SQL = """
             CREATE TABLE agentx_session (
@@ -68,6 +73,18 @@ public class SessionMessageStore {
     private static final String DELETE_BY_CONV_KEY_SQL = """
             DELETE FROM agentx_session
             WHERE conversation_id = ? AND state_key = ?
+            """;
+
+    private static final String SELECT_OFFLOAD_SQL = """
+            SELECT state_data FROM agentx_session
+            WHERE conversation_id = ? AND state_key = 'offload_context'
+            ORDER BY item_index ASC, id ASC
+            """;
+
+    private static final String SELECT_OFFLOAD_BY_UUID_SQL = """
+            SELECT state_data FROM agentx_session
+            WHERE state_key = 'offload_context' AND state_data LIKE ?
+            LIMIT 1
             """;
 
     private final JdbcTemplate jdbcTemplate;
@@ -142,6 +159,7 @@ public class SessionMessageStore {
     /**
      * 覆盖写：先删除指定 conversationId+stateKey 的全部行，再批量插入。
      * 用于 working_messages 等需要随压缩演进的视图状态。
+     * 这里主要用于压缩消息，先删除之前的消息，然后把压缩的消息重新插入
      */
     public void replaceMessages(String conversationId, long sessionId,
                                 String stateKey, List<Message> messages) {
@@ -190,5 +208,99 @@ public class SessionMessageStore {
             }
         }
         return all;
+    }
+
+    public void appendOffloadMessages(String conversationId, long sessionId,
+                                      String uuid, List<Message> messages) {
+        if (conversationId == null || uuid == null || messages == null || messages.isEmpty()) {
+            return;
+        }
+        ensureInitialized();
+        Integer maxIndex = jdbcTemplate.queryForObject(MAX_INDEX_SQL, Integer.class,
+                conversationId, "offload_context");
+        int nextIndex = (maxIndex == null ? -1 : maxIndex) + 1;
+
+        String data;
+        try {
+            data = objectMapper.writeValueAsString(Map.of(
+                    "uuid", uuid,
+                    "message", MessageJsonSerializer.toMaps(messages)
+            ));
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to serialize offload payload", e);
+        }
+        jdbcTemplate.update(INSERT_SQL,
+                IdWorker.getId(), conversationId, String.valueOf(sessionId),
+                "offload_context", nextIndex, data);
+        log.debug("Offloaded messages: conversationId={}, uuid={}, itemIndex={}, count={}",
+                conversationId, uuid, nextIndex, messages.size());
+    }
+
+    /**
+     * 按 UUID 从 offload_context 取回原文。不存在返回空列表。
+     */
+    public List<Message> getOffloaded(String conversationId, String uuid) {
+        if (conversationId == null || uuid == null) {
+            return List.of();
+        }
+        ensureInitialized();
+        List<String> jsonList = jdbcTemplate.queryForList(
+                SELECT_OFFLOAD_SQL, String.class, conversationId);
+        return findUuidInRows(jsonList, uuid);
+    }
+
+    /**
+     * 仅按 UUID 全局取回原文（不限定 conversationId）。
+     * 供 context_reload 工具使用：LLM 调用时只知道 uuid。
+     * uuid 必须为标准 UUID 格式，避免 SQL 注入。
+     */
+    public List<Message> getOffloadedByUuid(String uuid) {
+        if (uuid == null || !isStandardUuid(uuid)) {
+            return List.of();
+        }
+        ensureInitialized();
+        String pattern = "%\"uuid\":\"" + uuid + "\"%";
+        List<String> jsonList = jdbcTemplate.queryForList(
+                SELECT_OFFLOAD_BY_UUID_SQL, String.class, pattern);
+        return findUuidInRows(jsonList, uuid);
+    }
+
+    private List<Message> findUuidInRows(List<String> jsonList, String uuid) {
+        for (String json : jsonList) {
+            if (StringUtils.isBlank(json)) {
+                continue;
+            }
+            if (!json.contains("\"uuid\":\"" + uuid + "\"")) {
+                continue;
+            }
+            try {
+                Map<String, Object> row = objectMapper.readValue(json, new TypeReference<>() {});
+                Object rawMessages = row.get("message");
+                if (!(rawMessages instanceof List<?> list) || list.isEmpty()) {
+                    continue;
+                }
+                String msgJson = objectMapper.writeValueAsString(list);
+                List<Message> parsed = MessageJsonSerializer.fromJson(msgJson);
+                if (!parsed.isEmpty()) {
+                    return parsed;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse offloaded message uuid={}: {}", uuid, e.getMessage());
+            }
+        }
+        return List.of();
+    }
+
+    private static boolean isStandardUuid(String uuid) {
+        if (uuid.length() < 8 || uuid.length() > 80) {
+            return false;
+        }
+        for (int i = 0; i < uuid.length(); i++) {
+            char c = uuid.charAt(i);
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == '-')) {
+                return false;
+            }
+        }
+        return true;
     }
 }

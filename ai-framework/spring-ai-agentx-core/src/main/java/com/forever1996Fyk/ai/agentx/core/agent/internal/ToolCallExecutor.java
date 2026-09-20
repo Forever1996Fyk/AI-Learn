@@ -4,6 +4,9 @@ import com.alibaba.fastjson2.JSON;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.forever1996Fyk.ai.agentx.core.hook.AfterToolExecutionEvent;
+import com.forever1996Fyk.ai.agentx.core.hook.BeforeToolExecutionEvent;
+import com.forever1996Fyk.ai.agentx.core.hook.HookManager;
 import com.forever1996Fyk.ai.agentx.core.model.AgentStreamEvent;
 import com.forever1996Fyk.ai.agentx.core.model.PendingToolCall;
 import com.forever1996Fyk.ai.agentx.core.model.RunnableParams;
@@ -15,7 +18,6 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
 import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
@@ -41,12 +43,14 @@ public class ToolCallExecutor {
     private final Map<String, ToolCallback> toolMap;
     private final ObjectMapper objectMapper;
     private final String askUserToolName;
+    private final HookManager hookManager;
 
     public ToolCallExecutor(Map<String, ToolCallback> toolMap, ObjectMapper objectMapper,
-                            String askUserToolName) {
+                            String askUserToolName, HookManager hookManager) {
         this.toolMap = toolMap;
         this.objectMapper = objectMapper;
         this.askUserToolName = askUserToolName;
+        this.hookManager = hookManager;
     }
 
     /**
@@ -176,6 +180,17 @@ public class ToolCallExecutor {
                             if (detail.error == null) {
                                 sink.tryEmitNext(new AgentStreamEvent.ToolEnd(
                                         detail.toolCall.name(), detail.toolCall.id(), detail.rawResult));
+
+                                if (runtimeCtx != null && !hookManager.isEmpty()) {
+                                    hookManager.fireEvent(new AfterToolExecutionEvent(
+                                            runtimeCtx,
+                                            detail.toolCall.name(),
+                                            detail.toolCall.id(),
+                                            detail.toolCall.arguments(),
+                                            detail.rawResult,
+                                            true,
+                                            0));
+                                }
                             }
                         }
 
@@ -234,6 +249,15 @@ public class ToolCallExecutor {
         try {
             ToolContext toolContext = buildToolContext(params, sink);
             String effectiveArgs = argsJson;
+
+            if (runtimeCtx != null && !hookManager.isEmpty()) {
+                BeforeToolExecutionEvent event = new BeforeToolExecutionEvent(
+                        runtimeCtx, toolName, toolCall.id(), argsJson, toolContext
+                );
+                BeforeToolExecutionEvent processed = hookManager.fireEvent(event);
+                effectiveArgs = processed.getArguments();
+                toolContext = processed.getToolContext();
+            }
 
             // Hook 处理后、工具执行前发射 ToolStart（携带 post-hook 入参，与工具真实执行一致）
             if (sink != null) {

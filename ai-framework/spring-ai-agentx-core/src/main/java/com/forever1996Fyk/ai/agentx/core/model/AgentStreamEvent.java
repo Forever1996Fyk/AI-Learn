@@ -3,6 +3,7 @@ package com.forever1996Fyk.ai.agentx.core.model;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.forever1996Fyk.ai.agentx.core.exception.AgentErrorCode;
 import org.w3c.dom.Text;
 
 /**
@@ -36,6 +37,7 @@ import org.w3c.dom.Text;
         @JsonSubTypes.Type(value = AgentStreamEvent.ToolStart.class, name = "ToolStart"),
         @JsonSubTypes.Type(value = AgentStreamEvent.ToolEnd.class, name = "ToolEnd"),
         @JsonSubTypes.Type(value = AgentStreamEvent.Paused.class, name = "Paused"),
+        @JsonSubTypes.Type(value = AgentStreamEvent.Error.class, name = "Error"),
         @JsonSubTypes.Type(value = AgentStreamEvent.Complete.class, name = "Complete")
 })
 public sealed interface AgentStreamEvent permits
@@ -44,6 +46,7 @@ public sealed interface AgentStreamEvent permits
         AgentStreamEvent.ToolStart,
         AgentStreamEvent.ToolEnd,
         AgentStreamEvent.Paused,
+        AgentStreamEvent.Error,
         AgentStreamEvent.Complete{
 
     /**
@@ -103,6 +106,18 @@ public sealed interface AgentStreamEvent permits
      */
     record Paused(PauseState state, SubAgentSource source) implements AgentStreamEvent {
         public Paused(PauseState state) { this(state, null); }
+    }
+
+    /**
+     * LLM 调用异常事件（重试时发出）。
+     *
+     * @param code    错误码
+     * @param message 用户友好提示
+     * @param detail  异常详细信息（原始异常消息）
+     * @param source  事件来源（null 表示主 Agent）
+     */
+    record Error(AgentErrorCode code, String message, String detail, SubAgentSource source) implements AgentStreamEvent {
+        public Error(AgentErrorCode code, String message, String detail) { this(code, message, detail, null); }
     }
 
     /**

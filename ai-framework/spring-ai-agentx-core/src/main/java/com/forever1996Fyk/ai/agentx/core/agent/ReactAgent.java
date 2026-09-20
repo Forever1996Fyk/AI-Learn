@@ -4,7 +4,18 @@ import com.forever1996Fyk.ai.agentx.core.advisors.PauseAdvisor;
 import com.forever1996Fyk.ai.agentx.core.advisors.RequestLoggingAdvisor;
 import com.forever1996Fyk.ai.agentx.core.agent.internal.AgentLoopExecutor;
 import com.forever1996Fyk.ai.agentx.core.agent.internal.AgentTaskManager;
+import com.forever1996Fyk.ai.agentx.core.context.ContextCompactor;
 import com.forever1996Fyk.ai.agentx.core.context.ContextPolicy;
+import com.forever1996Fyk.ai.agentx.core.context.compress.CompressionStrategy;
+import com.forever1996Fyk.ai.agentx.core.context.compress.LlmSummarizer;
+import com.forever1996Fyk.ai.agentx.core.context.compress.NoOpOffloadStore;
+import com.forever1996Fyk.ai.agentx.core.context.compress.OffloadStore;
+import com.forever1996Fyk.ai.agentx.core.context.compress.SessionBackedOffloadStore;
+import com.forever1996Fyk.ai.agentx.core.context.compress.strategy.HistoricalToolListStrategy;
+import com.forever1996Fyk.ai.agentx.core.context.compress.strategy.LargeMsgOffloadNoKeepStrategy;
+import com.forever1996Fyk.ai.agentx.core.context.compress.strategy.LargeMsgOffloadWithKeepStrategy;
+import com.forever1996Fyk.ai.agentx.core.hook.AgentHook;
+import com.forever1996Fyk.ai.agentx.core.hook.ContextCompactionHook;
 import com.forever1996Fyk.ai.agentx.core.interrupt.InMemoryPauseStateStore;
 import com.forever1996Fyk.ai.agentx.core.interrupt.PauseStateStore;
 import com.forever1996Fyk.ai.agentx.core.memory.LongTermMemoryConfig;
@@ -12,10 +23,12 @@ import com.forever1996Fyk.ai.agentx.core.memory.LongTermMemoryManager;
 import com.forever1996Fyk.ai.agentx.core.memory.store.ConversationStore;
 import com.forever1996Fyk.ai.agentx.core.memory.store.DataSourceStorageFactory;
 import com.forever1996Fyk.ai.agentx.core.memory.store.SessionMessageStore;
+import com.forever1996Fyk.ai.agentx.core.model.AgentResult;
 import com.forever1996Fyk.ai.agentx.core.model.AgentStreamEvent;
 import com.forever1996Fyk.ai.agentx.core.model.RunnableParams;
 import com.forever1996Fyk.ai.agentx.core.model.ThinkingMode;
 import com.forever1996Fyk.ai.agentx.core.tools.AskUserTool;
+import com.forever1996Fyk.ai.agentx.core.tools.ContextReloadTool;
 import com.forever1996Fyk.ai.agentx.core.tools.toolsearch.DeferredToolRegistry;
 import com.forever1996Fyk.ai.agentx.core.tools.toolsearch.ToolSearchConfig;
 import com.forever1996Fyk.ai.agentx.core.trace.TraceStore;
@@ -25,11 +38,13 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import reactor.core.publisher.Flux;
 
 import javax.sql.DataSource;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -76,6 +91,11 @@ public class ReactAgent {
      * 是否启用会话存储
      */
     private boolean enableSession;
+
+    /**
+     * 钩子列表
+     */
+    private final List<AgentHook> hooks;
     /**
      * 任务管理器
      */
@@ -143,12 +163,39 @@ public class ReactAgent {
         this.conversationStore = conversationStore;
         this.longTermMemoryManager = longTermMemoryManager;
         this.enableSession = builder.enableSession;
+        this.hooks = builder.hooks;
         this.thinkingMode = builder.thinkingMode;
         this.maxRetries = builder.maxRetries;
         this.contextPolicy = builder.contextPolicy;
         this.traceStore = traceStore;
         this.enableTrace = builder.enableTrace;
         this.stateStore = pauseStateStore;
+    }
+
+
+    /**
+     * 同步调用 Agent
+     *
+     * @param query 用户消息
+     * @return Agent 响应文本
+     */
+    public String call(String query) {
+        return call(query, RunnableParams.empty());
+    }
+
+    /**
+     * 同步调用 Agent（带参数）
+     *
+     * @param query  用户消息
+     * @param params 调用参数
+     * @return Agent 响应文本
+     */
+    public String call(String query, RunnableParams params) {
+        if (params == null) {
+            params = RunnableParams.empty();
+        }
+        AgentResult result = createExecutor().call(query, params);
+        return result.answer();
     }
 
     /**
@@ -189,7 +236,7 @@ public class ReactAgent {
         }
 
         // Hook 列表：用户 Hook + 按需引入的上下文压缩 Hook（压缩 Hook 优先级最高，置列表首部）
-//        List<AgentHook> allHooks = new ArrayList<>(hooks != null ? hooks : List.of());
+        List<AgentHook> allHooks = new ArrayList<>(hooks != null ? hooks : List.of());
 
         var executorBuilder = AgentLoopExecutor.builder()
                 .chatClient(chatClient)
@@ -210,36 +257,32 @@ public class ReactAgent {
 
         // 上下文压缩（可选，按需引入 ContextCompactionHook）
         if (this.contextPolicy != null) {
-//            OffloadStore offloadStore = (enableSession && sessionMessageStore != null)
-//                    ? new SessionBackedOffloadStore(sessionMessageStore)
-//                    : new NoOpOffloadStore();
-//            LlmSummarizer summarizer = new LlmSummarizer(this.chatModel);
-//            List<CompressionStrategy> chain = new ArrayList<>();
-//            chain.add(new HistoricalToolListStrategy());
-//            chain.add(new LargeMsgOffloadWithKeepStrategy());
-//            chain.add(new LargeMsgOffloadNoKeepStrategy());
-//            chain.add(new HistoricalRoundSummaryStrategy(summarizer));
-//            chain.add(new CurrentRoundLargeMsgStrategy(summarizer));
-//            chain.add(new CurrentRoundOverallStrategy(summarizer));
-//            ContextCompactor compactor = new ContextCompactor(
-//                    this.contextPolicy, this.chatModel,
-//                    offloadStore, sessionMessageStore,
-//                    chain);
-//            // 压缩 Hook 置列表首部（priority=Integer.MAX_VALUE 已确保最先执行）
-//            allHooks.add(0, new ContextCompactionHook(compactor));
-//
-//            // context_reload 工具（仅在启用 session 时注册，追加到用户已配置的 tools 之后）
-//            if (enableSession && sessionMessageStore != null) {
-//                ToolCallback[] reloadCallbacks = org.springframework.ai.support.ToolCallbacks.from(
-//                        new ContextReloadTool(sessionMessageStore));
-//                List<ToolCallback> merged = new ArrayList<>(tools);
-//                for (ToolCallback tc : reloadCallbacks) {
-//                    merged.add(tc);
-//                }
-//                executorBuilder.tools(merged);
-//            }
+            boolean openSession = enableSession && sessionMessageStore != null;
+            OffloadStore offloadStore = openSession
+                    ? new SessionBackedOffloadStore(sessionMessageStore)
+                    : new NoOpOffloadStore();
+            LlmSummarizer summarizer = new LlmSummarizer(this.chatModel);
+            List<CompressionStrategy> chain = new ArrayList<>();
+            chain.add(new HistoricalToolListStrategy());
+            chain.add(new LargeMsgOffloadWithKeepStrategy());
+            chain.add(new LargeMsgOffloadNoKeepStrategy());
+            ContextCompactor compactor = new ContextCompactor(
+                    this.contextPolicy, this.chatModel,
+                    offloadStore, sessionMessageStore,
+                    chain
+            );
+            // 压缩 Hook 置列表首部（priority=Integer.MAX_VALUE 已确保最先执行）
+            allHooks.addFirst(new ContextCompactionHook(compactor));
+
+            // context_reload 工具（仅在启用 session 时注册，追加到用户已配置的 tools 之后）
+            if (openSession) {
+                ToolCallback[] reloadCallbacks = ToolCallbacks.from(new ContextReloadTool(sessionMessageStore));
+                List<ToolCallback> merged = new ArrayList<>(tools);
+                merged.addAll(Arrays.asList(reloadCallbacks));
+                executorBuilder.tools(merged);
+            }
         }
-//        executorBuilder.hooks(allHooks);
+        executorBuilder.hooks(allHooks);
 
         // 长期记忆（可选）
         if (longTermMemoryManager != null) {
@@ -282,6 +325,7 @@ public class ReactAgent {
         private LongTermMemoryConfig longTermMemoryConfig;
         private boolean enableSession = true;
         private boolean askUser = false;
+        private final List<AgentHook> hooks = new ArrayList<>();
         private ThinkingMode thinkingMode = ThinkingMode.DISABLED;
         private int maxRetries = 3;
         private ContextPolicy contextPolicy;
@@ -417,6 +461,39 @@ public class ReactAgent {
          */
         public Builder askUser(boolean askUser) {
             this.askUser = askUser;
+            return this;
+        }
+
+
+        /**
+         * 注册 Hook，在 Agent 生命周期关键节点被调用。
+         *
+         * <p>示例：
+         * <pre>{@code
+         * .hooks(
+         *     new SandboxHook(),
+         *     new CompressionHook()
+         * )
+         * }</pre>
+         *
+         * @param hooks Hook 实例
+         */
+        public Builder hooks(AgentHook... hooks) {
+            if (hooks != null) {
+                this.hooks.addAll(List.of(hooks));
+            }
+            return this;
+        }
+
+        /**
+         * 注册 Hook（List 形式）。
+         *
+         * @param hooks Hook 列表
+         */
+        public Builder hooks(List<AgentHook> hooks) {
+            if (hooks != null) {
+                this.hooks.addAll(hooks);
+            }
             return this;
         }
 

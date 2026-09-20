@@ -85,6 +85,13 @@ public class AgentTaskManager {
         }
     }
 
+    public void removeTask(String conversationId) {
+        TaskInfo removed = taskMap.remove(conversationId);
+        if (removed != null) {
+            log.debug("Removed task for conversation: {}", conversationId);
+        }
+    }
+
     public static class TaskInfo {
         // 通配类型
         private final Sinks.Many<?> sink;

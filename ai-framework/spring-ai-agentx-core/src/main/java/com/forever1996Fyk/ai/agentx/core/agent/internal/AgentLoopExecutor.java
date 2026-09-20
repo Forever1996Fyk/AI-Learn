@@ -5,6 +5,8 @@ import com.forever1996Fyk.ai.agentx.core.advisors.PauseAdvisor;
 import com.forever1996Fyk.ai.agentx.core.advisors.RequestLoggingAdvisor;
 import com.forever1996Fyk.ai.agentx.core.exception.AgentErrorCode;
 import com.forever1996Fyk.ai.agentx.core.exception.AgentException;
+import com.forever1996Fyk.ai.agentx.core.hook.AgentHook;
+import com.forever1996Fyk.ai.agentx.core.hook.HookManager;
 import com.forever1996Fyk.ai.agentx.core.interrupt.PauseReason;
 import com.forever1996Fyk.ai.agentx.core.interrupt.PauseStateStore;
 import com.forever1996Fyk.ai.agentx.core.memory.LongTermMemoryManager;
@@ -12,6 +14,7 @@ import com.forever1996Fyk.ai.agentx.core.memory.store.ConversationStore;
 import com.forever1996Fyk.ai.agentx.core.memory.store.SessionMessageStore;
 import com.forever1996Fyk.ai.agentx.core.memory.util.MemoryInjector;
 import com.forever1996Fyk.ai.agentx.core.memory.util.MemoryPersistor;
+import com.forever1996Fyk.ai.agentx.core.model.AgentResult;
 import com.forever1996Fyk.ai.agentx.core.model.AgentStreamEvent;
 import com.forever1996Fyk.ai.agentx.core.model.PauseState;
 import com.forever1996Fyk.ai.agentx.core.model.PendingToolCall;
@@ -20,6 +23,7 @@ import com.forever1996Fyk.ai.agentx.core.model.ThinkingMode;
 import com.forever1996Fyk.ai.agentx.core.stage.AgentRuntimeContext;
 import com.forever1996Fyk.ai.agentx.core.tools.toolsearch.DeferredToolRegistry;
 import com.forever1996Fyk.ai.agentx.core.trace.TraceStore;
+import com.forever1996Fyk.ai.agentx.core.util.JsonRepairUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,6 +66,7 @@ public class AgentLoopExecutor {
     private MemoryInjector memoryInjector;
     private final LoopMessageBuilder messageBuilder;
 
+    private final HookManager hookManager;
     private final ThinkingMode thinkingMode;
     private final ThinkingModeProcessor thinkingModeProcessor;
     private final ToolCallExecutor toolCallExecutor;
@@ -91,6 +96,9 @@ public class AgentLoopExecutor {
 
         List<Advisor> advisors = builder.advisors != null ? List.copyOf(builder.advisors) : List.of();
         List<ToolCallback> alwaysLoadTools = builder.tools != null ? List.copyOf(builder.tools) : List.of();
+        this.hookManager = builder.hooks != null && !builder.hooks.isEmpty()
+                ? new HookManager(builder.hooks)
+                : HookManager.EMPTY;
 
         Map<String, ToolCallback> map = new HashMap<>();
         if (builder.tools != null) {
@@ -131,13 +139,109 @@ public class AgentLoopExecutor {
 
         // 工具调用执行器
         this.toolCallExecutor = new ToolCallExecutor(toolMap, new ObjectMapper(),
-                builder.askUserToolName);
+                builder.askUserToolName, hookManager);
 
     }
 
     public static Builder builder() {
         return new Builder();
     }
+
+    /**
+     * 非流式执行 ReAct 循环。REASONING_CONTENT 模式下内部走流式收集思考内容。
+     */
+    public AgentResult call(String query, RunnableParams params) {
+        String conversationId = params != null ? params.getConversationId() : null;
+        if (taskManager != null && conversationId != null) {
+            if (taskManager.registerTask(conversationId, null) == null) {
+                return new AgentResult.Failed("该会话正在执行中，请稍后再试: " + conversationId, AgentErrorCode.CONCURRENT_EXECUTION);
+            }
+        }
+        try {
+            return callViaStreamForResult(query, params);
+        } finally {
+            if (taskManager != null && conversationId != null) {
+                taskManager.removeTask(conversationId);
+            }
+        }
+    }
+
+
+    /**
+     * REASONING_CONTENT 模式内部走流式收集，blockLast 后同步落库避免 doFinally 时序问题。
+     */
+    private AgentResult callViaStreamForResult(String query, RunnableParams params) {
+        BuiltMessages built = messageBuilder.buildInitialMessages(query, params);
+        List<Message> messages = built.messages();
+        Sinks.Many<AgentStreamEvent> sink = Sinks.many().unicast().onBackpressureBuffer();
+        AgentRuntimeContext execCtx = new AgentRuntimeContext(query, params);
+        execCtx.setNewMsgStartIndex(built.newMsgStartIndex());
+        execCtx.setOriginalMessagesSnapshot(new ArrayList<>(messages));
+        sessionPersister.initSession(execCtx, params, query);
+        AtomicLong roundCounter = new AtomicLong(0);
+
+        registerInterruptContext(messages, sink, params, query, execCtx, roundCounter);
+
+        return blockForResult(messages, sink, roundCounter, params, execCtx, query);
+    }
+
+    /**
+     * sink 阻塞收集：scheduleRound → doOnNext 累积 → blockLast → AgentResult，供 call/resume 共用。
+     */
+    private AgentResult blockForResult(List<Message> messages,
+                                       Sinks.Many<AgentStreamEvent> sink,
+                                       AtomicLong roundCounter,
+                                       RunnableParams params,
+                                       AgentRuntimeContext execCtx,
+                                       String query) {
+        scheduleRound(messages, sink, roundCounter, params, execCtx, query);
+
+        StringBuilder answer = new StringBuilder();
+        StringBuilder think = new StringBuilder();
+        PauseState[] pauseHolder = {null};
+        String[] errorHolder = {null};
+
+        sink.asFlux()
+                .doOnNext(event -> {
+                    switch (event) {
+                        case AgentStreamEvent.Text t -> answer.append(t.content());
+                        case AgentStreamEvent.Thinking t -> think.append(t.content());
+                        case AgentStreamEvent.Paused p -> pauseHolder[0] = p.state();
+                        case AgentStreamEvent.Error e -> errorHolder[0] = e.message();
+                        // 工具调用轮清空 answer 和 think，只保留最后一轮（与 AgentScope 一致）
+                        case AgentStreamEvent.ToolStart ts -> {
+                            answer.setLength(0);
+                            think.setLength(0);
+                        }
+                        default -> {
+                        }
+                    }
+                })
+                .blockLast();
+        if (errorHolder[0] != null) {
+            execCtx.markTerminal("error");
+            sessionPersister.persistOnTerminal(execCtx, messages, SignalType.ON_ERROR);
+            return new AgentResult.Failed(errorHolder[0], AgentErrorCode.LLM_CALL_FAILED);
+        }
+        if (pauseHolder[0] != null) {
+            execCtx.markTerminal("interrupted");
+            sessionPersister.persistOnTerminal(execCtx, messages, SignalType.CANCEL);
+            return new AgentResult.Paused(pauseHolder[0]);
+        }
+
+        String finalAnswer = answer.toString();
+        if (params != null && params.getOutputType() != null) {
+            finalAnswer = JsonRepairUtil.fixJson(finalAnswer);
+        }
+
+        execCtx.markTerminal("completed");
+        sessionPersister.persistOnTerminal(execCtx, messages, SignalType.ON_COMPLETE);
+
+        return new AgentResult.Completed(
+                finalAnswer,
+                !think.isEmpty() ? think.toString() : null);
+    }
+
 
     /**
      * 流式执行 ReAct 循环，返回 AgentStreamEvent 流。
@@ -558,6 +662,7 @@ public class AgentLoopExecutor {
         private boolean enableSession = true;
         private boolean enableTrace = true;
         private String askUserToolName;
+        private List<AgentHook> hooks;
         private ThinkingMode thinkingMode = ThinkingMode.DISABLED;
         private int maxRetries = 3;
         private DeferredToolRegistry deferredToolRegistry;
@@ -623,6 +728,11 @@ public class AgentLoopExecutor {
 
         public Builder askUserToolName(String v) {
             this.askUserToolName = v;
+            return this;
+        }
+
+        public Builder hooks(List<AgentHook> v) {
+            this.hooks = v;
             return this;
         }
 
