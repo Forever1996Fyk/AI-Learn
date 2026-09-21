@@ -14,6 +14,7 @@
     <modules>
         <module>general-agent</module>
         <module>shushu-agent</module>
+        <module>shushu-agent-plus</module>
     </modules>
 
     <properties>
