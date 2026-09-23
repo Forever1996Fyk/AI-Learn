@@ -1,5 +1,8 @@
 package com.forever1996Fyk.ai.agentplus.skill;
 
+import java.io.IOException;
+import java.nio.file.Path;
+
 /**
  * @program: AI-Learn
  * @description:
@@ -19,5 +22,29 @@ public interface SkillContentStore {
      * 同步（启动时 + 定时）：localFs 实现为目录 → DB 入库；minio 实现为 DB → 本地拉取。
      */
     void sync();
+
+    /**
+     * 上传时存储 skill 内容（skillSourceDir 已解压并校验出 SKILL.md）。
+     */
+    void save(String name, Path skillSourceDir) throws IOException;
+
+    /**
+     * DB 里 skill_path 存什么：localFs 返回本地目录，minio 返回 MinIO objectKey。
+     */
+    String storedPath(String name);
+
+    /**
+     *  删除 skill 内容。
+     *
+     * @param name  技能名称
+     */
+    void delete(String name) throws IOException;
+
+    /**
+     * 内容变更后的通知（DB 写完后调用）：minio 实现广播一条 pub/sub，
+     * 各节点收到后立即触发 sync，不必等定时周期。
+     */
+    default void notifyChanged() {
+    }
 }
 

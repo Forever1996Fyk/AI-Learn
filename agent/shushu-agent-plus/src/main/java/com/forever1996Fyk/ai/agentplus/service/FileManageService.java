@@ -1,6 +1,7 @@
 package com.forever1996Fyk.ai.agentplus.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.forever1996Fyk.ai.agentplus.domain.entity.AgentxFile;
 import com.forever1996Fyk.ai.agentplus.mapper.AgentxFileMapper;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.sql.DataSource;
+import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -79,7 +81,7 @@ public class FileManageService {
         tryExecute(jdbc, "CREATE INDEX idx_agentx_file_session ON agentx_file (session_id)");
         // conversation_id 索引：stream 启动时按会话反查文件用
         tryExecute(jdbc, "CREATE INDEX idx_agentx_file_conv ON agentx_file (conversation_id)");
-        log.info("[dodo-agentx] 表 agentx_file 已就绪");
+        log.info("[shushu-agent-plus] 表 agentx_file 已就绪");
     }
 
     /**
@@ -89,7 +91,7 @@ public class FileManageService {
         try {
             jdbc.execute(sql);
         } catch (Exception e) {
-            log.debug("[dodo-agentx] DDL 跳过（可能已存在）: {} | err={}", sql, e.getMessage());
+            log.debug("[shushu-agent-plus] DDL 跳过（可能已存在）: {} | err={}", sql, e.getMessage());
         }
     }
 
@@ -108,8 +110,27 @@ public class FileManageService {
                 .in(AgentxFile::getFileId, fileIds)
                 .set(AgentxFile::getConversationId, conversationId);
         int updated = agentxFileMapper.update(null, wrapper);
-        log.info("[dodo-agentx] 已 link 文件到会话: convId={}, files={}, updated={}",
+        log.info("[shushu-agent-plus] 已 link 文件到会话: convId={}, files={}, updated={}",
                 conversationId, fileIds.size(), updated);
+    }
+
+    /**
+     * 把一组文件关联到某次 agentx_session 轮次 + 所属会话。
+     * 由 ShushuAgent 在 stream Complete 事件中调用（Complete 携带 sessionId + conversationId）。
+     */
+    public void linkToSession(List<String> fileIds, Long sessionId, String conversationId) {
+        if (fileIds == null || fileIds.isEmpty() || sessionId == null) {
+            return;
+        }
+        LambdaUpdateWrapper<AgentxFile> wrapper = new LambdaUpdateWrapper<AgentxFile>()
+                .in(AgentxFile::getFileId, fileIds)
+                .set(AgentxFile::getSessionId, sessionId);
+        if (conversationId != null && !conversationId.isBlank()) {
+            wrapper.set(AgentxFile::getConversationId, conversationId);
+        }
+        int updated = agentxFileMapper.update(null, wrapper);
+        log.info("[shushu-agent-plus] 已 link 文件到 session: sessionId={}, convId={}, files={}, updated={}",
+                sessionId, conversationId, fileIds.size(), updated);
     }
 
     /**
@@ -134,7 +155,7 @@ public class FileManageService {
         String fileType = extractExt(file.getOriginalFilename());
         long fileSize = file.getSize();
 
-        log.info("[dodo-agentx] 开始上传: fileId={}, name={}, type={}, size={}",
+        log.info("[shushu-agent-plus] 开始上传: fileId={}, name={}, type={}, size={}",
                 fileId, file.getOriginalFilename(), fileType, fileSize);
 
         AgentxFile entity = new AgentxFile();
@@ -159,25 +180,94 @@ public class FileManageService {
                 handleTextFile(file, entity);
             } else if (isImageFile(fileType)) {
                 // 图片不在上传时识别（避免拖慢上传 + 烧模型成本），留给 analyzeFile 按需调多模态
-                log.info("[dodo-agentx] 图片文件仅落 MinIO + DB，识别延迟到 analyzeFile: fileId={}", fileId);
+                log.info("[shushu-agent-plus] 图片文件仅落 MinIO + DB，识别延迟到 analyzeFile: fileId={}", fileId);
             } else {
-                log.info("[dodo-agentx] 不支持的解析类型: {}，仅存储 MinIO 元数据", fileType);
+                log.info("[shushu-agent-plus] 不支持的解析类型: {}，仅存储 MinIO 元数据", fileType);
             }
 
             entity.setStatus("SUCCESS");
             entity.setUpdatedAt(LocalDateTime.now());
             agentxFileMapper.updateById(entity);
-            log.info("[dodo-agentx] 上传成功: fileId={}, embed={}", fileId, entity.getEmbed());
+            log.info("[shushu-agent-plus] 上传成功: fileId={}, embed={}", fileId, entity.getEmbed());
             return entity;
 
         } catch (Exception e) {
-            log.error("[dodo-agentx] 上传失败: fileId={}", fileId, e);
+            log.error("[shushu-agent-plus] 上传失败: fileId={}", fileId, e);
             entity.setStatus("FAILED");
             entity.setUpdatedAt(LocalDateTime.now());
             agentxFileMapper.updateById(entity);
             throw new RuntimeException("文件上传失败: " + e.getMessage(), e);
         }
     }
+
+    public AgentxFile getFileInfo(String fileId) {
+        AgentxFile entity = findByFileId(fileId);
+        if (entity == null) {
+            throw new IllegalArgumentException("文件不存在: " + fileId);
+        }
+        return entity;
+    }
+
+
+    /**
+     * 从 MinIO 下载文件原始字节（analyzeFile 调多模态识别时用）。
+     */
+    public byte[] downloadFileBytes(String fileId) {
+        return downloadFileBytes(getFileInfo(fileId));
+    }
+
+    /**
+     * 从 MinIO 下载文件原始字节（analyzeFile 调多模态识别时用）。
+     */
+    public byte[] downloadFileBytes(AgentxFile file) {
+        if (StringUtils.isBlank(file.getMinioPath())) {
+            throw new IllegalStateException("文件未上传到对象存储: " + file.getFileId());
+        }
+        String objectName = extractObjectName(file.getMinioPath());
+        try (InputStream is = minioService.downloadFile(objectName)){
+            return is.readAllBytes();
+        } catch (Exception e) {
+            throw new RuntimeException("从 MinIO 下载文件失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteFile(String fileId) {
+        AgentxFile entity = findByFileId(fileId);
+        if (entity == null) {
+            throw new IllegalArgumentException("文件不存在: " + fileId);
+        }
+        try {
+            if (StringUtils.isNotBlank(entity.getMinioPath())) {
+                String objectName = extractObjectName(entity.getMinioPath());
+                minioService.deleteFile(objectName);
+            }
+        } catch (Exception e) {
+            log.warn("[dodo-agentx] MinIO 删除失败（继续删 DB）: fileId={}, err={}", fileId, e.getMessage());
+        }
+        agentxFileMapper.delete(new QueryWrapper<AgentxFile>().eq("file_id", fileId));
+        log.info("[dodo-agentx] 文件已删除: fileId={}", fileId);
+    }
+
+    /**
+     * 把图片识别后的描述写回 extracted_text（懒缓存）。
+     * 下次 analyzeFile 同一图片直接走 cache，不再调多模态。
+     */
+    public void saveExtractedText(String fileId, String text) {
+        AgentxFile entity = findByFileId(fileId);
+        if (entity == null) {
+            return;
+        }
+        entity.setExtractedText(text);
+        entity.setUpdatedAt(LocalDateTime.now());
+        agentxFileMapper.updateById(entity);
+    }
+
+    private AgentxFile findByFileId(String fileId) {
+        return agentxFileMapper.selectOne(
+                new QueryWrapper<AgentxFile>().eq("file_id", fileId));
+    }
+
 
     private void handleTextFile(MultipartFile file, AgentxFile entity) {
         var parseResult = fileParserService.parse(file);
@@ -192,13 +282,13 @@ public class FileManageService {
                         .apply(List.of(new Document(fullText)));
                 embeddingService.embedAndStore(chunks, entity.getFileId());
                 entity.setEmbed(1);
-                log.info("[dodo-agentx] 大文件已向量化: fileId={}, chunks={}", entity.getFileId(), chunks.size());
+                log.info("[shushu-agent-plus] 大文件已向量化: fileId={}, chunks={}", entity.getFileId(), chunks.size());
             } catch (Exception e) {
-                log.warn("[dodo-agentx] 向量化失败，回退到直接加载: fileId={}, err={}", entity.getFileId(), e.getMessage());
+                log.warn("[shushu-agent-plus] 向量化失败，回退到直接加载: fileId={}, err={}", entity.getFileId(), e.getMessage());
                 // embed 保持 0，不阻断上传
             }
         } else if (isLargeFile(fullText)) {
-            log.info("[dodo-agentx] 大文件但 PgVector 不可用，仅存截断文本: fileId={}", entity.getFileId());
+            log.info("[shushu-agent-plus] 大文件但 PgVector 不可用，仅存截断文本: fileId={}", entity.getFileId());
         }
     }
 
@@ -217,6 +307,13 @@ public class FileManageService {
         return "file-" + fileId.replace("-", "") + "." + fileType;
     }
 
+    private static String extractObjectName(String fullPath) {
+        if (fullPath == null || !fullPath.contains("/")) {
+            return fullPath;
+        }
+        return fullPath.substring(fullPath.lastIndexOf('/') + 1);
+    }
+
     public boolean isTextFile(String ext) {
         return ext != null && TEXT_EXTS.contains(ext.toLowerCase(Locale.ROOT));
     }
@@ -224,5 +321,4 @@ public class FileManageService {
     public boolean isImageFile(String ext) {
         return ext != null && IMAGE_EXTS.contains(ext.toLowerCase(Locale.ROOT));
     }
-
 }

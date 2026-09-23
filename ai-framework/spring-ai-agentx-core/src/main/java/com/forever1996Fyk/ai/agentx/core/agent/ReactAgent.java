@@ -199,6 +199,20 @@ public class ReactAgent {
     }
 
     /**
+     * 流式调用 Agent，返回完整事件流（包含暂停事件）。
+     *
+     * @param query  用户消息
+     * @param params 调用参数
+     * @return AgentStreamEvent 流
+     */
+    public Flux<AgentStreamEvent> streamForResult(String query, RunnableParams params) {
+        if (params == null) {
+            params = RunnableParams.empty();
+        }
+        return createExecutor().stream(query, params);
+    }
+
+    /**
      * 流式调用 Agent
      *
      * @param query 用户消息
@@ -310,7 +324,6 @@ public class ReactAgent {
     public static Builder builder() {
         return new Builder();
     }
-
 
     public static class Builder {
         private String name;

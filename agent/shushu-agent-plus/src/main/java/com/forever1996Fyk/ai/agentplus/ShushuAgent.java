@@ -6,22 +6,47 @@ import com.forever1996Fyk.ai.agentplus.service.FileManageService;
 import com.forever1996Fyk.ai.agentplus.service.UserContextBuilder;
 import com.forever1996Fyk.ai.agentplus.skill.SkillManager;
 import com.forever1996Fyk.ai.agentplus.tools.AnalyzeFileTool;
+import com.forever1996Fyk.ai.agentplus.tools.LookupGlossaryTool;
 import com.forever1996Fyk.ai.agentplus.tools.SkillsTool;
+import com.forever1996Fyk.ai.agentplus.tools.TimeTool;
 import com.forever1996Fyk.ai.agentplus.util.ToolMergeUtil;
 import com.forever1996Fyk.ai.agentx.core.agent.ReactAgent;
+import com.forever1996Fyk.ai.agentx.core.agent.internal.AgentTaskManager;
+import com.forever1996Fyk.ai.agentx.core.chatmodels.DeepSeekV4ChatModel;
+import com.forever1996Fyk.ai.agentx.core.context.ContextPolicy;
+import com.forever1996Fyk.ai.agentx.core.interrupt.JdbcPauseStateStore;
+import com.forever1996Fyk.ai.agentx.core.interrupt.PauseStateStore;
 import com.forever1996Fyk.ai.agentx.core.model.AgentStreamEvent;
 import com.forever1996Fyk.ai.agentx.core.model.RunnableParams;
-import lombok.RequiredArgsConstructor;
+import com.forever1996Fyk.ai.agentx.core.model.ThinkingMode;
+import com.forever1996Fyk.ai.agentx.core.tools.FileSystemTool;
+import com.forever1996Fyk.ai.agentx.core.tools.GrepTool;
+import com.forever1996Fyk.ai.agentx.core.tools.TodoWriteTool;
+import com.forever1996Fyk.ai.agentx.core.tools.toolsearch.ToolSearchConfig;
+import io.modelcontextprotocol.client.McpSyncClient;
+import io.netty.resolver.DefaultAddressResolverGroup;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.deepseek.DeepSeekChatOptions;
+import org.springframework.ai.deepseek.api.DeepSeekApi;
+import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.ReactorClientHttpRequestFactory;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.netty.http.client.HttpClient;
 
+import javax.sql.DataSource;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,20 +61,155 @@ import java.util.stream.IntStream;
  **/
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ShushuAgent {
+    private static final int TOOL_SEARCH_MAX_RESULTS = 10;
+
+    @Value("${spring.ai.deepseek.base-url}")
+    private String baseUrl;
+
+    @Value("${spring.ai.deepseek.api-key}")
+    private String apiKey;
+
+    @Value("${spring.ai.deepseek.chat.options.model}")
+    private String model;
+
+    @Value("${spring.ai.deepseek.chat.options.temperature:0.7}")
+    private double temperature;
+
+    private ChatModel chatModel;
+
+    private final DataSource dataSource;
 
     /**
      * Tools
      */
     private final AnalyzeFileTool analyzeFileTool;
 
+    /**
+     * MCP
+     */
+    private final McpSyncClient chartMcpSyncClient;
+    private final McpSyncClient tavilyMcpSyncClient;
 
     private final SkillManager skillManager;
     private final FileManageService fileManageService;
     private final UserContextBuilder userContextBuilder;
 
+    private ToolCallback[] tavilyTools;
+    private ToolCallback[] deferredTools;
     private ToolCallback[] alwaysOnBaseTools;
+    private ContextPolicy contextPolicy;
+    private final ToolSearchConfig toolSearchConfig = ToolSearchConfig.builder().maxResults(TOOL_SEARCH_MAX_RESULTS).build();
+
+    private final AgentTaskManager sharedTaskManager = new AgentTaskManager();
+    private final PauseStateStore sharedStateStore;
+
+    public ShushuAgent(DataSource dataSource,
+                       McpSyncClient chartMcpSyncClient,
+                       McpSyncClient tavilyMcpSyncClient,
+                       SkillManager skillManager,
+                       AnalyzeFileTool analyzeFileTool,
+                       FileManageService fileManageService,
+                       UserContextBuilder userContextBuilder) {
+        this.dataSource = dataSource;
+        this.chartMcpSyncClient = chartMcpSyncClient;
+        this.tavilyMcpSyncClient = tavilyMcpSyncClient;
+        this.skillManager = skillManager;
+        this.analyzeFileTool = analyzeFileTool;
+        this.fileManageService = fileManageService;
+        this.userContextBuilder = userContextBuilder;
+        this.sharedStateStore = new JdbcPauseStateStore(dataSource);
+    }
+
+    @PostConstruct
+    void init() {
+        this.chatModel = buildChatModel();
+        this.alwaysOnBaseTools = buildAlwaysOnBaseTools();
+        this.tavilyTools = buildTavilyTools();
+        this.deferredTools = buildDeferredTools();
+        this.contextPolicy = buildContextPolicy();
+        this.sharedStateStore.initialize();
+        log.info("[shushu-agent-plus] DodoAgent 初始化完成 | 常驻={} | tavily={} | deferred={}",
+                alwaysOnBaseTools.length,
+                tavilyTools.length,
+                deferredTools.length);
+    }
+
+    private ChatModel buildChatModel() {
+        HttpClient httpClient = HttpClient.create()
+                .resolver(DefaultAddressResolverGroup.INSTANCE).responseTimeout(Duration.ofSeconds(300));
+        DeepSeekApi deepSeekApi = DeepSeekApi.builder()
+                .apiKey(apiKey)
+                .baseUrl(baseUrl)
+                .restClientBuilder(RestClient.builder()
+                        .requestFactory(new ReactorClientHttpRequestFactory(httpClient)))
+                .webClientBuilder(WebClient.builder()
+                        .clientConnector(new ReactorClientHttpConnector(httpClient)))
+                .build();
+        DeepSeekChatOptions options = DeepSeekChatOptions.builder()
+                .model(model)
+                .temperature(temperature)
+                .build();
+        return DeepSeekV4ChatModel.builder()
+                .deepSeekApi(deepSeekApi)
+                .defaultOptions(options)
+                .build();
+    }
+
+    /**
+     * 常驻工具：内置能力，每次请求必带。
+     * 包含：规划 / Bash / 文件系统 / 代码搜索 / 当前时间 / SkillsTool（每次请求重建）
+     */
+    private ToolCallback[] buildAlwaysOnBaseTools() {
+        return ToolMergeUtil.mergeTools(
+                TodoWriteTool.create(),
+                FileSystemTool.create(),
+                GrepTool.create(),
+                TimeTool.create()
+        );
+    }
+
+    /**
+     * Tavily 联网搜索工具。client 为 null（未配置或初始化失败）时返回空数组。
+     */
+    private ToolCallback[] buildTavilyTools() {
+        if (tavilyMcpSyncClient == null) {
+            log.warn("[shushu-agent-plus] Tavily MCP client 未就绪，联网工具不注入");
+            return new ToolCallback[0];
+        }
+        SyncMcpToolCallbackProvider provider = SyncMcpToolCallbackProvider.builder()
+                .mcpClients(List.of(tavilyMcpSyncClient))
+                .build();
+        ToolCallback[] tools = provider.getToolCallbacks();
+        log.info("[shushu-agent-plus] Tavily 注入联网工具 {} 个: {}",
+                tools.length, toolNames(tools));
+        return tools;
+    }
+
+
+    /**
+     * 延迟工具：数据领域工具 + 图表 + 术语表。
+     * LLM 通过 tool_search 元工具按需发现，不会一次性塞入上下文。
+     */
+    private ToolCallback[] buildDeferredTools() {
+        ToolCallback glossaryTool = LookupGlossaryTool.builder().build();
+
+        SyncMcpToolCallbackProvider provider = SyncMcpToolCallbackProvider.builder()
+                .mcpClients(List.of(chartMcpSyncClient))
+                .build();
+        ToolCallback[] chartTools = provider.getToolCallbacks();
+        log.info("[shushu-agent-plus] mcp-echarts 注入图表工具 {} 个: {}",
+                chartTools.length, toolNames(chartTools));
+
+        return ToolMergeUtil.mergeTools(
+                new ToolCallback[]{glossaryTool},
+                chartTools
+        );
+    }
+
+    private ContextPolicy buildContextPolicy() {
+        return ContextPolicy.defaults();
+    }
 
     /**
      * 流式调用。根据 userId + 会话文件构造 instructions，根据 online 注入 Tavily，
@@ -68,6 +228,62 @@ public class ShushuAgent {
 
         String instructions = buildInstructions(params.getUserId(), convId, files);
         ReactAgent agent = buildReactAgent(instructions, online, hasAnyFile);
+
+        Flux<AgentStreamEvent> baseFlux = agent.streamForResult(query, params);
+
+        // session_id 在 Complete 事件后补写（历史回放按轮次取附件用）
+        if (fileIds == null || fileIds.isEmpty()) {
+            return baseFlux;
+        }
+        return baseFlux.doOnNext(evt -> linkFilesFromEvent(fileIds, evt));
+    }
+
+
+    /**
+     * 用户主动中断指定会话的流式任务，持久化快照以便后续 resume。
+     */
+    public boolean interrupt(String convId) {
+        return sharedTaskManager.interrupt(convId, "用户主动中断");
+    }
+
+    /**
+     * 丢弃指定会话的中断快照：新消息顶掉进行中的回答时调用，断点已被新请求取代。
+     */
+    public void discardInterruptedState(String conversationId) {
+        sharedStateStore.delete(conversationId);
+    }
+
+    /**
+     * 检查指定会话是否存在未恢复的中断状态。
+     */
+    public boolean hasInterruptedState(String conversationId) {
+        return sharedStateStore.exists(conversationId);
+    }
+
+    /**
+     * 从流式事件中提取 sessionId，关联文件到 session。
+     * Complete（正常完成）和 Paused（用户中断）都处理。
+     */
+    private void linkFilesFromEvent(List<String> fileIds, AgentStreamEvent evt) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            return;
+        }
+        Long sessionId = null;
+        String conversationId = null;
+        if (evt instanceof AgentStreamEvent.Complete complete && complete.sessionId() != null) {
+            sessionId = complete.sessionId();
+            conversationId = complete.conversationId();
+        } else if (evt instanceof AgentStreamEvent.Paused paused && paused.state() != null && paused.state().getSessionId() > 0) {
+            sessionId = paused.state().getSessionId();
+        }
+        if (sessionId != null) {
+            try {
+                fileManageService.linkToSession(fileIds, sessionId, conversationId);
+            } catch (Exception e) {
+                log.warn("[shushu-agent-plus] link 文件失败（不影响主流程）: sessionId={}, fileIds={}",
+                        sessionId, fileIds, e);
+            }
+        }
     }
 
     /**
@@ -82,6 +298,27 @@ public class ShushuAgent {
     private ReactAgent buildReactAgent(String instructions, boolean online, boolean injectFileTool) {
         ToolCallback[] skillsTools = buildSkillsTools();
         ToolCallback[] alwaysOn = ToolMergeUtil.mergeTools(alwaysOnBaseTools, skillsTools);
+
+        if (injectFileTool) {
+            ToolCallback[] fileTools = ToolCallbacks.from(analyzeFileTool);
+            alwaysOn = ToolMergeUtil.mergeTools(alwaysOn, fileTools);
+        }
+
+        if (online && tavilyTools.length > 0) {
+            alwaysOn = ToolMergeUtil.mergeTools(alwaysOn, tavilyTools);
+        }
+        return ReactAgent.builder()
+                .chatModel(chatModel)
+                .instructions(instructions)
+                .dataSource(dataSource)
+                .taskManager(sharedTaskManager)
+                .stateStore(sharedStateStore)
+                .contextPolicy(contextPolicy)
+                .thinkingMode(ThinkingMode.REASONING_CONTENT)
+                .tools(alwaysOn)
+                .deferredTools(toolSearchConfig, deferredTools)
+                .maxRounds(100)
+                .build();
     }
 
     /**
@@ -195,5 +432,13 @@ public class ShushuAgent {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private static List<String> toolNames(ToolCallback[] tools) {
+        List<String> names = new ArrayList<>(tools.length);
+        for (ToolCallback ct : tools) {
+            names.add(ct.getToolDefinition().name());
+        }
+        return names;
     }
 }

@@ -92,6 +92,58 @@ public class AgentTaskManager {
         }
     }
 
+    /**
+     * 用户主动中断：触发快照回调 + dispose 订阅。
+     *
+     * <p>若 AgentLoopExecutor 已注册中断处理器：先调用回调构建并发射 PauseState，
+     * 然后 dispose 当前 LLM 订阅停止上游。回调内部负责发射 Paused 事件和 tryEmitComplete。
+     *
+     * <p>若未注册（极少见，如 interrupt 在首轮 scheduleRound 之前调用）：
+     * 直接 dispose + tryEmitComplete，等同 stopTask。
+     *
+     * @param conversationId 会话 ID
+     * @param message        中断说明消息（可为 null）
+     * @return true 如果任务存在并已触发中断
+     */
+    public boolean interrupt(String conversationId, String message) {
+        TaskInfo taskInfo = taskMap.get(conversationId);
+        if (taskInfo == null) {
+            log.warn("No running task to interrupt for conversation: {}", conversationId);
+            return false;
+        }
+        // 1. 先 dispose 当前订阅，阻止后续 chunk 流入 sink
+        //    （volatile 字段已记录最后阶段，快照可从中读取）
+        Disposable disposable = taskInfo.getDisposable();
+        if (disposeQuietly(disposable)) {
+            log.debug("Interrupted in-flight subscription: conversationId={}", conversationId);
+        }
+        // 2. 触发已注册的快照回调：构建 PauseState、发射 Paused 事件、tryEmitComplete
+        boolean handled = taskInfo.triggerInterrupt(message);
+        if (!handled) {
+            log.warn("No interrupt handler registered for conversation {}, fallback complete sink: {}",
+                    conversationId, message);
+            // 无回调（极少见，如首轮 scheduleRound 之前）— 直接 complete sink
+            Sinks.Many<?> sink = taskInfo.getSink();
+            if (sink != null) {
+                sink.tryEmitComplete();
+            }
+        }
+        return true;
+    }
+
+    private static boolean disposeQuietly(Disposable disposable) {
+        if (disposable == null || disposable.isDisposed()) {
+            return false;
+        }
+        try {
+            disposable.dispose();
+            return true;
+        } catch (Exception e) {
+            log.debug("Ignoring dispose error: {}", e.getMessage());
+            return false;
+        }
+    }
+
     public static class TaskInfo {
         // 通配类型
         private final Sinks.Many<?> sink;
@@ -142,6 +194,19 @@ public class AgentTaskManager {
             this.interruptHandler = handler;
         }
 
+        /**
+         * 设置中断请求标志，并触发已注册的快照回调。
+         * 返回值表示是否成功触发回调（true = 已回调，false = 无回调注册）。
+         */
+        public boolean triggerInterrupt(String message) {
+            this.interruptRequest = new InterruptRequest(message, System.currentTimeMillis());
+            Consumer<String> handler = this.interruptHandler;
+            if (handler != null) {
+                handler.accept(message);
+                return true;
+            }
+            return false;
+        }
     }
 
     /**

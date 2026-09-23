@@ -108,6 +108,7 @@ public class JdbcPauseStateStore implements PauseStateStore {
     /**
      * 自动建表（幂等），工厂方法在构造后调用。
      */
+    @Override
     public void initialize() {
         if (initialized) {
             return;
@@ -305,12 +306,24 @@ public class JdbcPauseStateStore implements PauseStateStore {
 
     @Override
     public boolean exists(String conversationId) {
-        return false;
+        ensureInitialized();
+        if (conversationId == null) {
+            return false;
+        }
+        try {
+            return !jdbcTemplate.query(EXISTS_SQL, (rs, rn) -> 1, conversationId).isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @Override
     public boolean delete(String conversationId) {
-        return false;
+        ensureInitialized();
+        if (conversationId == null) {
+            return false;
+        }
+        return jdbcTemplate.update(DELETE_SQL, conversationId) > 0;
     }
 
     @Override

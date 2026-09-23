@@ -11,6 +11,13 @@ import com.forever1996Fyk.ai.agentx.core.model.PauseState;
 public interface PauseStateStore {
 
     /**
+     * 初始化。
+     */
+    default void initialize() {
+
+    }
+
+    /**
      * 保存（覆盖）指定 conversationId 的暂停状态。
      */
     void save(PauseState state);

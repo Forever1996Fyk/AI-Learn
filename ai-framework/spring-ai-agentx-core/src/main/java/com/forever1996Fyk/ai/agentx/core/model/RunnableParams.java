@@ -80,6 +80,11 @@ public class RunnableParams {
         return outputType;
     }
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
+
     public static class Builder {
         private String conversationId;
         private String userId;
